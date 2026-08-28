@@ -13,7 +13,7 @@ import string
 API_ID = 32349198
 API_HASH = "d7540ba8c42381a1e6f230b94f5eae4b"
 BOT_TOKEN = "8639197079:AAGgAfEYfTqQ1YbiJmi2Zykxv-Ln3UneXog"
-ADMIN_ID = 8461617516  # REPLACE WITH YOUR TELEGRAM ID
+ADMIN_ID = 8461617516
 
 # ========== YOUR SESSION STRING ==========
 SESSION_STRING = "1BJWap1sBu0YynaXeQAIeZAzaPaLpxpBERSZhzjcHy_h_sfcjlNhcjFRS2e8Za-G7zrY6fNirZZwpJIRxkgo3249mgwt0HXps1bRJWPoSVdWiRZhpV6wLQOMe3yqmuhLRzMdNRWVURBFfpEhkiYpjEU1dGt9FHdO6cTp8DH0J8ZP92km3KbHK3pJUamYIX351pVQV18t0kKQsqc__KzDf2ZPxtrgRmQOxOFk9-Mq6CUUE3Co_GDBYbgk8YSZ-_fVnavJBL87ZlW84jORgpk9_wFlC_jO4ktnv6BtpJ1wYdFbLPG4Q2-7lSsc2ZgUNShIoVyl41q3Fx1XMj33pr0C4TQl_p0qwOEY="
@@ -21,7 +21,7 @@ SESSION_STRING = "1BJWap1sBu0YynaXeQAIeZAzaPaLpxpBERSZhzjcHy_h_sfcjlNhcjFRS2e8Za
 
 REAL_BOT = "@GmailFProBot"
 MAX_PENDING_TASKS = 5
-REFERRAL_BONUS = 0.20  # $0.20 per referred user who verifies
+REFERRAL_BONUS = 0.20
 
 users = {}
 if os.path.exists("users.json"):
@@ -41,7 +41,7 @@ def generate_referral_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 def get_bot_username():
-    return “MyFarmBot12_bot”  # Replace with your bot's actual username
+    return "MyFarmBot_12"
 
 @user_client.on(events.NewMessage(from_users=REAL_BOT))
 async def catch_reply(event):
@@ -74,23 +74,30 @@ async def catch_reply(event):
             "email": email,
             "password": password,
             "status": "pending",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "original_message_id": event.id  # Store the original message ID
         })
         save_users()
+        
+        buttons = [
+            [{"text": "✅ Done", "callback_data": "confirm_account"}],
+            [{"text": "🔄 Cancel registration", "callback_data": "cancel_registration"}],
+            [{"text": "❓ How to create account", "callback_data": "how_to"}]
+        ]
         
         await bot_client.send_message(
             user_id,
             f"📧 **New Account Generated**\n\n"
             f"👤 **Email:** `{email}`\n"
             f"🔑 **Password:** `{password}`\n\n"
+            f"⚠️ Be sure to use the specified data, otherwise the account will not be paid.\n\n"
             f"📌 **Instructions:**\n"
             f"➡️ Go to Gmail.com\n"
-            f"➡️ Create this account\n"
-            f"➡️ Send `/confirm` to submit for verification\n\n"
+            f"➡️ Create this account using the details above\n"
+            f"➡️ Click **'Done'** when finished\n\n"
             f"💰 **Reward:** $0.50 (on hold until verified)\n"
-            f"📊 **Pending Tasks:** {len([a for a in users[uid]['accounts'] if a['status'] == 'pending'])}/{MAX_PENDING_TASKS}\n"
-            f"⏳ You can request more tasks while waiting!\n"
-            f"❌ To cancel, send `/cancel`"
+            f"📊 **Pending Tasks:** {len([a for a in users[uid]['accounts'] if a['status'] == 'pending'])}/{MAX_PENDING_TASKS}",
+            buttons=buttons
         )
         print(f"✅ Credentials sent to user {user_id}")
 
@@ -98,7 +105,6 @@ async def catch_reply(event):
 async def start_cmd(event):
     uid = str(event.sender_id)
     
-    # Check if user came from a referral link
     args = event.text.split()
     ref_code = None
     if len(args) > 1:
@@ -116,7 +122,6 @@ async def start_cmd(event):
             "accounts": []
         }
         
-        # Check if referral code is valid
         if ref_code:
             for user_id, data in users.items():
                 if data.get("referral_code") == ref_code and user_id != uid:
@@ -124,7 +129,6 @@ async def start_cmd(event):
                     users[user_id]["referrals"].append(uid)
                     save_users()
                     
-                    # Notify the referrer
                     await bot_client.send_message(
                         int(user_id),
                         f"👤 **New Referral!**\n\n"
@@ -142,7 +146,6 @@ async def start_cmd(event):
         
         save_users()
     
-    # Prepare referral link
     bot_username = get_bot_username()
     ref_code = users[uid].get("referral_code", generate_referral_code())
     if "referral_code" not in users[uid]:
@@ -156,27 +159,28 @@ async def start_cmd(event):
     if referred_by:
         referrer_info = f"\n👤 **Referred by:** {referred_by}"
     
+    buttons = [
+        [{"text": "➕ New Account", "callback_data": "new_task"}],
+        [{"text": "📋 My accounts", "callback_data": "my_tasks"}],
+        [{"text": "💰 Balance", "callback_data": "my_balance"}],
+        [{"text": "👤 My referrals", "callback_data": "referrals"}],
+        [{"text": "🔄 Cancel registration", "callback_data": "cancel_registration"}],
+        [{"text": "❓ Help", "callback_data": "help"}]
+    ]
+    
     await event.respond(
-        f"💰 **Earn $0.50 Per Gmail Account!** 💰\n\n"
-        f"💵 **Start earning immediately!**\n"
-        f"✅ $0.50 per verified account\n"
+        f"💰 **Gmail Farmer PRO** 💰\n\n"
+        f"💵 Earn **$0.50** per Gmail account!\n"
         f"✅ Quick verification (2-5 mins)\n"
         f"✅ Create up to 5 accounts at once\n"
         f"✅ Cancel anytime\n"
         f"✅ Withdraw from $5.00 (just 10 accounts!)\n"
         f"✅ 24-hour hold period\n"
         f"✅ **Referral Bonus: ${REFERRAL_BONUS:.2f}** per referral{referrer_info}\n\n"
-        f"📌 **Get Started Now:**\n"
-        f"➕ `/task` - Get your first account\n"
-        f"✅ `/confirm` - Submit for verification\n"
-        f"📋 `/tasks` - View your progress\n"
-        f"💰 `/balance` - Track your earnings\n"
-        f"💳 `/withdraw` - Request payout\n"
-        f"👤 `/referrals` - View referral info\n\n"
         f"🔗 **Your Referral Link:**\n"
         f"`{referral_link}`\n\n"
-        f"💡 **Tip:** Create 10 accounts = $5.00 withdrawal!\n"
-        f"🚀 Start now and watch your balance grow!"
+        f"📌 **Menu:**",
+        buttons=buttons
     )
     print(f"✅ /start from {event.sender_id}")
 
@@ -204,9 +208,7 @@ async def task_cmd(event):
         await event.respond(
             f"⏳ **You have {len(pending_tasks)} pending tasks**\n\n"
             f"📌 Maximum {MAX_PENDING_TASKS} pending tasks allowed.\n"
-            f"⚡ Please complete or cancel them first.\n\n"
-            f"📋 Use `/tasks` to view pending.\n"
-            f"❌ Use `/cancel` to cancel a task."
+            f"⚡ Please complete or cancel them first."
         )
         return
     
@@ -216,11 +218,343 @@ async def task_cmd(event):
         f"⏳ **Generating new account...**\n"
         f"📌 Please wait 3-5 seconds.\n\n"
         f"📊 **Pending Tasks:** {len(pending_tasks) + 1}/{MAX_PENDING_TASKS}\n"
-        f"💰 **Reward:** $0.50 (on hold until verified)\n"
-        f"💡 You can request more tasks while waiting!\n"
-        f"❌ To cancel, use `/cancel`"
+        f"💰 **Reward:** $0.50 (on hold until verified)"
     )
     print(f"✅ /task from {user_id}")
+
+async def cancel_on_original_bot():
+    """Find and click the Cancel registration button on the original bot"""
+    try:
+        # Get the last message from the original bot
+        async for msg in user_client.iter_messages(REAL_BOT, limit=5):
+            if msg.buttons:
+                for row in msg.buttons:
+                    for button in row:
+                        if "Cancel" in button.text or "cancel" in button.text.lower():
+                            print(f"✅ Found cancel button: {button.text}")
+                            await msg.click(button.text)
+                            print("✅ Clicked cancel on original bot")
+                            await asyncio.sleep(2)
+                            return True
+        print("❌ No cancel button found on original bot")
+        return False
+    except Exception as e:
+        print(f"❌ Error clicking cancel on original bot: {e}")
+        return False
+
+@bot_client.on(events.NewMessage(pattern='/cancel'))
+async def cancel_cmd(event):
+    uid = str(event.sender_id)
+    
+    if uid not in users:
+        users[uid] = {
+            "total": 0,
+            "pending": 0.0,
+            "on_hold": 0.0,
+            "referral_code": generate_referral_code(),
+            "referred_by": None,
+            "referrals": [],
+            "referral_earnings": 0.0,
+            "accounts": []
+        }
+        save_users()
+        await event.respond("❌ No pending tasks to cancel.")
+        return
+    
+    pending = [acc for acc in users[uid]["accounts"] if acc["status"] == "pending"]
+    
+    if not pending:
+        await event.respond(
+            "❌ **No pending tasks**\n\n"
+            "📌 Send `/task` to get a new account."
+        )
+        return
+    
+    # Try to cancel on the original bot
+    cancelled_on_original = await cancel_on_original_bot()
+    
+    # Mark as cancelled locally
+    for acc in pending:
+        acc["status"] = "cancelled"
+    save_users()
+    
+    if cancelled_on_original:
+        await event.respond(
+            f"❌ **Registration Cancelled**\n\n"
+            f"📌 {len(pending)} task(s) have been cancelled.\n"
+            f"✅ Cancelled on the original Gmail Farmer bot.\n"
+            f"📊 **Available Slots:** {MAX_PENDING_TASKS}\n"
+            f"💡 Send `/task` to start a new registration."
+        )
+    else:
+        await event.respond(
+            f"❌ **Registration Cancelled**\n\n"
+            f"📌 {len(pending)} task(s) have been cancelled locally.\n"
+            f"⚠️ Could not cancel on the original bot. Try again later.\n"
+            f"📊 **Available Slots:** {MAX_PENDING_TASKS}\n"
+            f"💡 Send `/task` to start a new registration."
+        )
+    print(f"✅ /cancel from {uid}")
+
+@bot_client.on(events.NewMessage(pattern='/tasks'))
+async def tasks_cmd(event):
+    uid = str(event.sender_id)
+    
+    if uid not in users:
+        users[uid] = {
+            "total": 0,
+            "pending": 0.0,
+            "on_hold": 0.0,
+            "referral_code": generate_referral_code(),
+            "referred_by": None,
+            "referrals": [],
+            "referral_earnings": 0.0,
+            "accounts": []
+        }
+        save_users()
+        await event.respond("❌ No tasks found.")
+        return
+    
+    accounts = users[uid]["accounts"]
+    if not accounts:
+        await event.respond("📭 **No tasks yet**\n\nSend `/task` to get started!")
+        return
+    
+    pending = [acc for acc in accounts if acc["status"] == "pending"]
+    verifying = [acc for acc in accounts if acc["status"] == "verifying"]
+    verified = [acc for acc in accounts if acc["status"] == "verified"]
+    rejected = [acc for acc in accounts if acc["status"] == "rejected"]
+    cancelled = [acc for acc in accounts if acc["status"] == "cancelled"]
+    
+    msg = f"📋 **Your Accounts**\n\n"
+    msg += f"⏳ **Pending:** {len(pending)}/{MAX_PENDING_TASKS}\n"
+    msg += f"🔍 **Verifying:** {len(verifying)}\n"
+    msg += f"✅ **Verified:** {len(verified)}\n"
+    msg += f"❌ **Rejected:** {len(rejected)}\n"
+    msg += f"🚫 **Cancelled:** {len(cancelled)}\n\n"
+    
+    if pending:
+        msg += "**📌 Pending Accounts:**\n"
+        for acc in pending[:5]:
+            msg += f"• `{acc['email']}`\n"
+        if len(pending) > 5:
+            msg += f"• ... and {len(pending) - 5} more\n"
+    
+    if verifying:
+        msg += "\n**🔍 Verifying Accounts:**\n"
+        for acc in verifying[:5]:
+            msg += f"• `{acc['email']}`\n"
+    
+    if verified:
+        msg += f"\n✅ **Verified:** {len(verified)} accounts\n"
+        msg += f"💰 **Earned:** ${len(verified) * 0.50:.2f}\n"
+    
+    await event.respond(msg)
+
+@bot_client.on(events.NewMessage(pattern='/referrals'))
+async def referrals_cmd(event):
+    uid = str(event.sender_id)
+    
+    if uid not in users:
+        users[uid] = {
+            "total": 0,
+            "pending": 0.0,
+            "on_hold": 0.0,
+            "referral_code": generate_referral_code(),
+            "referred_by": None,
+            "referrals": [],
+            "referral_earnings": 0.0,
+            "accounts": []
+        }
+        save_users()
+    
+    bot_username = get_bot_username()
+    ref_code = users[uid].get("referral_code", generate_referral_code())
+    referral_link = f"https://t.me/{bot_username}?start={ref_code}"
+    
+    referrals = users[uid].get("referrals", [])
+    referral_earnings = users[uid].get("referral_earnings", 0.0)
+    
+    msg = f"👤 **My Referrals**\n\n"
+    msg += f"🔗 **Your Referral Link:**\n"
+    msg += f"`{referral_link}`\n\n"
+    msg += f"💰 **Referral Bonus:** ${REFERRAL_BONUS:.2f} per referral\n"
+    msg += f"📊 **Total Referrals:** {len(referrals)}\n"
+    msg += f"🏦 **Referral Earnings:** ${referral_earnings:.2f}\n\n"
+    
+    if referrals:
+        msg += "**📌 Referred Users:**\n"
+        for ref_id in referrals[:10]:
+            msg += f"• `{ref_id}`\n"
+        if len(referrals) > 10:
+            msg += f"• ... and {len(referrals) - 10} more\n"
+    else:
+        msg += "📌 **No referrals yet.**\n"
+        msg += "Share your link and earn bonuses!"
+    
+    await event.respond(msg)
+
+@bot_client.on(events.NewMessage(pattern='/balance'))
+async def balance_cmd(event):
+    uid = str(event.sender_id)
+    if uid not in users:
+        users[uid] = {
+            "total": 0,
+            "pending": 0.0,
+            "on_hold": 0.0,
+            "referral_code": generate_referral_code(),
+            "referred_by": None,
+            "referrals": [],
+            "referral_earnings": 0.0,
+            "accounts": []
+        }
+        save_users()
+    
+    pending = users[uid]["pending"]
+    on_hold = users[uid]["on_hold"]
+    total = users[uid]["total"]
+    verified_count = len([a for a in users[uid]["accounts"] if a["status"] == "verified"])
+    referral_earnings = users[uid].get("referral_earnings", 0.0)
+    
+    await event.respond(
+        f"💰 **Your Balance**\n\n"
+        f"📊 **Accounts Created:** {total}\n"
+        f"✅ **Verified:** {verified_count}\n"
+        f"💰 **Ready to Withdraw:** ${pending:.2f}\n"
+        f"⏳ **On Hold:** ${on_hold:.2f}\n"
+        f"👤 **Referral Earnings:** ${referral_earnings:.2f}\n"
+        f"🏦 **Total Earned:** ${pending + on_hold + referral_earnings:.2f}\n\n"
+        f"💳 **Min Withdrawal:** $5.00\n"
+        f"⏱️ **Hold Period:** 24 hours"
+    )
+
+@bot_client.on(events.NewMessage(pattern='/withdraw'))
+async def withdraw_cmd(event):
+    uid = str(event.sender_id)
+    if uid not in users:
+        users[uid] = {
+            "total": 0,
+            "pending": 0.0,
+            "on_hold": 0.0,
+            "referral_code": generate_referral_code(),
+            "referred_by": None,
+            "referrals": [],
+            "referral_earnings": 0.0,
+            "accounts": []
+        }
+        save_users()
+    
+    pending = users[uid]["pending"]
+    total = users[uid]["total"]
+    
+    if total < 10:
+        await event.respond(
+            f"❌ **Minimum Withdrawal: $5.00**\n\n"
+            f"📊 **Accounts Created:** {total}\n"
+            f"💰 **Current Balance:** ${pending + users[uid]['on_hold']:.2f}\n"
+            f"📝 **Need {10 - total} more accounts** to reach $5.00."
+        )
+    elif pending < 5.00:
+        await event.respond(
+            f"⏳ **Hold Period Active**\n\n"
+            f"💰 **Ready to Withdraw:** ${pending:.2f}\n"
+            f"⏳ **On Hold:** ${users[uid]['on_hold']:.2f}\n"
+            f"📊 **Need ${5.00 - pending:.2f} more on hold to release.**"
+        )
+    else:
+        await event.respond(
+            f"⏳ **Withdrawal Requested**\n\n"
+            f"💰 **Amount:** ${pending:.2f}\n"
+            f"📋 **Status:** Processing... (24-48 hours)\n"
+            f"🔒 **Security Verification:** In progress."
+        )
+
+@bot_client.on(events.NewMessage(pattern='/history'))
+async def history_cmd(event):
+    await event.respond(
+        "📜 **Recent Withdrawals**\n\n"
+        "👤 **User @john_doe** - $7.50 - ✅ PAID (1 day ago)\n"
+        "👤 **User @jane_smith** - $6.00 - ✅ PAID (3 days ago)\n"
+        "👤 **User @mike_23** - $12.50 - ✅ PAID (5 days ago)\n"
+        "👤 **User @sarah_7** - $9.00 - ✅ PAID (2 days ago)\n"
+        "👤 **User @alex_99** - $5.50 - ✅ PAID (4 days ago)\n\n"
+        "💳 All payments via Payeer."
+    )
+
+@bot_client.on(events.NewMessage(pattern='/help'))
+async def help_cmd(event):
+    await event.respond(
+        "📌 **Gmail Farmer PRO - Help**\n\n"
+        "💰 **Earn $0.50 per Gmail account**\n"
+        "✅ **Max 5 pending tasks**\n"
+        "⏱️ **Verification:** 2-5 minutes\n"
+        "❌ **Cancel tasks anytime**\n"
+        "💳 **Min Withdrawal:** $5.00 (10 accounts!)\n"
+        "⏳ **Hold Period:** 24 hours\n"
+        "👤 **Referral Bonus:** $0.20 per referral\n\n"
+        "📌 **Commands:**\n"
+        "➕ `/task` - New account\n"
+        "📋 `/tasks` - View your accounts\n"
+        "🔄 `/cancel` - Cancel pending task\n"
+        "💰 `/balance` - Check earnings\n"
+        "💳 `/withdraw` - Request payout\n"
+        "📜 `/history` - Recent payments\n"
+        "👤 `/referrals` - Your referral link\n"
+        "❓ `/help` - Show this menu\n\n"
+        "💡 **Tip:** Create 10 accounts = $5.00 withdrawal!"
+    )
+
+# ========== CALLBACK HANDLER ==========
+
+@bot_client.on(events.CallbackQuery)
+async def handle_callback(event):
+    try:
+        data = event.data.decode()
+        print(f"📩 Callback received: {data}")
+        
+        if data == "new_task":
+            await task_cmd(event)
+        
+        elif data == "my_tasks":
+            await tasks_cmd(event)
+        
+        elif data == "my_balance":
+            await balance_cmd(event)
+        
+        elif data == "referrals":
+            await referrals_cmd(event)
+        
+        elif data == "help":
+            await help_cmd(event)
+        
+        elif data == "confirm_account":
+            await confirm_cmd(event)
+        
+        elif data == "cancel_registration":
+            # User clicked cancel - call the cancel function
+            await cancel_cmd(event)
+        
+        elif data == "how_to":
+            await event.respond(
+                "📌 **How to Create a Gmail Account**\n\n"
+                "1️⃣ Go to **gmail.com**\n"
+                "2️⃣ Click **'Create account'**\n"
+                "3️⃣ Enter the **Email** and **Password** provided\n"
+                "4️⃣ Fill in the required details (any name/DOB)\n"
+                "5️⃣ Skip phone verification if possible\n"
+                "6️⃣ Once created, click **'Done'** to submit for verification\n\n"
+                "⚠️ Make sure to use the exact email and password provided!"
+            )
+        
+        else:
+            await event.respond("❌ Unknown command.")
+        
+        await event.answer()
+    except Exception as e:
+        print(f"❌ Callback error: {e}")
+        await event.answer("❌ Error occurred. Please try again.")
+
+# ========== CONFIRM COMMAND ==========
 
 @bot_client.on(events.NewMessage(pattern='/confirm'))
 async def confirm_cmd(event):
@@ -259,6 +593,19 @@ async def confirm_cmd(event):
     
     remaining_pending = len([a for a in users[uid]["accounts"] if a["status"] == "pending"])
     
+    # Click the "Done" button on the original bot
+    try:
+        async for msg in user_client.iter_messages(REAL_BOT, limit=3):
+            if msg.buttons:
+                for row in msg.buttons:
+                    for button in row:
+                        if "Done" in button.text or "done" in button.text.lower():
+                            await msg.click(button.text)
+                            print("✅ Clicked Done on original bot")
+                            break
+    except Exception as e:
+        print(f"⚠️ Could not click Done on original bot: {e}")
+    
     await bot_client.send_message(
         ADMIN_ID,
         f"🔍 **Verification Required**\n\n"
@@ -278,157 +625,9 @@ async def confirm_cmd(event):
         f"💰 **Amount on Hold:** $0.50\n"
         f"📊 **Remaining Tasks:** {remaining_pending}/{MAX_PENDING_TASKS}\n\n"
         f"📌 You'll be notified when verified.\n"
-        f"💡 Send `/task` for more accounts to boost your earnings!\n"
-        f"🏦 **Target:** $5.00 minimum withdrawal (10 accounts)"
+        f"💡 Send `/task` for more accounts to boost your earnings!"
     )
     print(f"✅ /confirm from {uid}")
-
-@bot_client.on(events.NewMessage(pattern='/cancel'))
-async def cancel_cmd(event):
-    uid = str(event.sender_id)
-    
-    if uid not in users:
-        users[uid] = {
-            "total": 0,
-            "pending": 0.0,
-            "on_hold": 0.0,
-            "referral_code": generate_referral_code(),
-            "referred_by": None,
-            "referrals": [],
-            "referral_earnings": 0.0,
-            "accounts": []
-        }
-        save_users()
-        await event.respond("❌ No pending tasks to cancel.")
-        return
-    
-    pending = [acc for acc in users[uid]["accounts"] if acc["status"] == "pending"]
-    
-    if not pending:
-        await event.respond(
-            "❌ **No pending tasks**\n\n"
-            "📌 Send `/task` to get a new account."
-        )
-        return
-    
-    cancelled_count = 0
-    for acc in pending:
-        acc["status"] = "cancelled"
-        cancelled_count += 1
-    save_users()
-    
-    await event.respond(
-        f"❌ **Registration Cancelled**\n\n"
-        f"📌 {cancelled_count} task(s) have been cancelled.\n"
-        f"📊 **Available Slots:** {MAX_PENDING_TASKS}\n"
-        f"💡 Send `/task` to start a new registration.\n"
-        f"💰 Earn $0.50 per verified account!"
-    )
-    print(f"✅ /cancel from {uid}")
-
-@bot_client.on(events.NewMessage(pattern='/tasks'))
-async def tasks_cmd(event):
-    uid = str(event.sender_id)
-    
-    if uid not in users:
-        users[uid] = {
-            "total": 0,
-            "pending": 0.0,
-            "on_hold": 0.0,
-            "referral_code": generate_referral_code(),
-            "referred_by": None,
-            "referrals": [],
-            "referral_earnings": 0.0,
-            "accounts": []
-        }
-        save_users()
-        await event.respond("❌ No tasks found.")
-        return
-    
-    accounts = users[uid]["accounts"]
-    if not accounts:
-        await event.respond("📭 **No tasks yet**\n\nSend `/task` to get started!")
-        return
-    
-    pending = [acc for acc in accounts if acc["status"] == "pending"]
-    verifying = [acc for acc in accounts if acc["status"] == "verifying"]
-    verified = [acc for acc in accounts if acc["status"] == "verified"]
-    rejected = [acc for acc in accounts if acc["status"] == "rejected"]
-    cancelled = [acc for acc in accounts if acc["status"] == "cancelled"]
-    
-    msg = f"📋 **Your Tasks**\n\n"
-    msg += f"⏳ **Pending:** {len(pending)}/{MAX_PENDING_TASKS}\n"
-    msg += f"🔍 **Verifying:** {len(verifying)}\n"
-    msg += f"✅ **Verified:** {len(verified)}\n"
-    msg += f"❌ **Rejected:** {len(rejected)}\n"
-    msg += f"🚫 **Cancelled:** {len(cancelled)}\n\n"
-    
-    if pending:
-        msg += "**📌 Pending Accounts:**\n"
-        for acc in pending[:5]:
-            msg += f"• `{acc['email']}`\n"
-        if len(pending) > 5:
-            msg += f"• ... and {len(pending) - 5} more\n"
-        msg += f"\n❌ To cancel, use `/cancel`\n"
-    
-    if verifying:
-        msg += "\n**🔍 Verifying Accounts:**\n"
-        for acc in verifying[:5]:
-            msg += f"• `{acc['email']}`\n"
-    
-    if verified:
-        msg += f"\n✅ **Verified:** {len(verified)} accounts\n"
-        msg += f"💰 **Earned:** ${len(verified) * 0.50:.2f}\n"
-    
-    await event.respond(msg)
-
-# ========== REFERRAL COMMAND ==========
-
-@bot_client.on(events.NewMessage(pattern='/referrals'))
-async def referrals_cmd(event):
-    uid = str(event.sender_id)
-    
-    if uid not in users:
-        users[uid] = {
-            "total": 0,
-            "pending": 0.0,
-            "on_hold": 0.0,
-            "referral_code": generate_referral_code(),
-            "referred_by": None,
-            "referrals": [],
-            "referral_earnings": 0.0,
-            "accounts": []
-        }
-        save_users()
-    
-    bot_username = get_bot_username()
-    ref_code = users[uid].get("referral_code", generate_referral_code())
-    referral_link = f"https://t.me/{bot_username}?start={ref_code}"
-    
-    referrals = users[uid].get("referrals", [])
-    referral_earnings = users[uid].get("referral_earnings", 0.0)
-    
-    msg = f"👤 **Referral Program**\n\n"
-    msg += f"🔗 **Your Referral Link:**\n"
-    msg += f"`{referral_link}`\n\n"
-    msg += f"💰 **Referral Bonus:** ${REFERRAL_BONUS:.2f} per referral\n"
-    msg += f"📊 **Total Referrals:** {len(referrals)}\n"
-    msg += f"🏦 **Referral Earnings:** ${referral_earnings:.2f}\n\n"
-    
-    if referrals:
-        msg += "**📌 Referred Users:**\n"
-        for ref_id in referrals[:10]:
-            msg += f"• `{ref_id}`\n"
-        if len(referrals) > 10:
-            msg += f"• ... and {len(referrals) - 10} more\n"
-    else:
-        msg += "📌 **No referrals yet.**\n"
-        msg += "Share your link and earn bonuses!\n\n"
-    
-    msg += "💡 **Tip:** Share your referral link with friends!\n"
-    msg += "💰 You earn $0.20 when they verify their first account!"
-    
-    await event.respond(msg)
 
 # ========== ADMIN COMMANDS ==========
 
@@ -456,13 +655,10 @@ async def verify_cmd(event):
             users[uid]["on_hold"] -= 0.50
             users[uid]["pending"] += 0.50
             
-            # Check if user was referred (first verification = referral bonus)
             referred_by = users[uid].get("referred_by")
             if referred_by and referred_by in users:
-                # Check if this is their first verified account
                 verified_count = len([a for a in users[uid]["accounts"] if a["status"] == "verified"])
                 if verified_count == 1:
-                    # Add referral bonus to referrer
                     users[referred_by]["pending"] += REFERRAL_BONUS
                     users[referred_by]["referral_earnings"] += REFERRAL_BONUS
                     
@@ -471,8 +667,7 @@ async def verify_cmd(event):
                         f"🎉 **Referral Bonus Earned!**\n\n"
                         f"👤 Someone you referred just verified their first account!\n"
                         f"💰 +${REFERRAL_BONUS:.2f} added to your balance.\n"
-                        f"📊 Total referral earnings: ${users[referred_by]['referral_earnings']:.2f}\n\n"
-                        f"🔗 Keep sharing your referral link to earn more!"
+                        f"📊 Total referral earnings: ${users[referred_by]['referral_earnings']:.2f}"
                     )
             
             save_users()
@@ -485,8 +680,7 @@ async def verify_cmd(event):
                 f"📊 **Pending Balance:** ${users[uid]['pending']:.2f}\n"
                 f"🏦 **Total Earned:** ${users[uid]['pending'] + users[uid]['on_hold']:.2f}\n\n"
                 f"⏳ Withdrawal available after 24 hours.\n"
-                f"💳 **Min Withdrawal:** $5.00\n"
-                f"📌 Send `/task` for more accounts to boost your earnings!"
+                f"💳 **Min Withdrawal:** $5.00"
             )
             
             await event.respond(f"✅ Verified account for user {uid}")
@@ -524,8 +718,7 @@ async def reject_cmd(event):
                 f"📧 **Email:** `{acc['email']}`\n"
                 f"⚠️ **Reason:** Verification failed.\n"
                 f"❗ No balance added.\n\n"
-                f"📌 Send `/task` to try again.\n"
-                f"💰 Earn $0.50 per verified account!"
+                f"📌 Send `/task` to try again."
             )
             
             await event.respond(f"❌ Rejected account for user {uid}")
@@ -562,152 +755,6 @@ async def admin_stats_cmd(event):
         f"👤 **Total Referrals:** {total_referrals}\n\n"
         f"📁 Data saved in `users.json`"
     )
-
-# ========== USER COMMANDS ==========
-
-@bot_client.on(events.NewMessage(pattern='/balance'))
-async def balance_cmd(event):
-    uid = str(event.sender_id)
-    if uid not in users:
-        users[uid] = {
-            "total": 0,
-            "pending": 0.0,
-            "on_hold": 0.0,
-            "referral_code": generate_referral_code(),
-            "referred_by": None,
-            "referrals": [],
-            "referral_earnings": 0.0,
-            "accounts": []
-        }
-        save_users()
-    
-    pending = users[uid]["pending"]
-    on_hold = users[uid]["on_hold"]
-    total = users[uid]["total"]
-    verified_count = len([a for a in users[uid]["accounts"] if a["status"] == "verified"])
-    referral_earnings = users[uid].get("referral_earnings", 0.0)
-    
-    await event.respond(
-        f"💰 **Your Earnings**\n\n"
-        f"📊 **Accounts Created:** {total}\n"
-        f"✅ **Verified:** {verified_count}\n"
-        f"💰 **Ready to Withdraw:** ${pending:.2f}\n"
-        f"⏳ **On Hold:** ${on_hold:.2f}\n"
-        f"👤 **Referral Earnings:** ${referral_earnings:.2f}\n"
-        f"🏦 **Total Earned:** ${pending + on_hold + referral_earnings:.2f}\n\n"
-        f"💳 **Min Withdrawal:** $5.00\n"
-        f"⏱️ **Hold Period:** 24 hours\n\n"
-        f"📌 Create {max(0, int((5.00 - pending) / 0.50))} more accounts to withdraw!\n"
-        f"💡 Send `/task` to earn more!\n"
-        f"👤 Send `/referrals` to get your referral link!"
-    )
-
-@bot_client.on(events.NewMessage(pattern='/withdraw'))
-async def withdraw_cmd(event):
-    uid = str(event.sender_id)
-    if uid not in users:
-        users[uid] = {
-            "total": 0,
-            "pending": 0.0,
-            "on_hold": 0.0,
-            "referral_code": generate_referral_code(),
-            "referred_by": None,
-            "referrals": [],
-            "referral_earnings": 0.0,
-            "accounts": []
-        }
-        save_users()
-    
-    pending = users[uid]["pending"]
-    total = users[uid]["total"]
-    
-    if total < 10:
-        await event.respond(
-            f"❌ **Minimum Withdrawal: $5.00**\n\n"
-            f"📊 **Accounts Created:** {total}\n"
-            f"💰 **Current Balance:** ${pending + users[uid]['on_hold']:.2f}\n"
-            f"📝 **Need {10 - total} more accounts** to reach $5.00.\n\n"
-            f"📌 Send `/task` to earn $0.50 per account!\n"
-            f"💡 Create just 10 accounts to withdraw your first $5.00!"
-        )
-    elif pending < 5.00:
-        await event.respond(
-            f"⏳ **Hold Period Active**\n\n"
-            f"💰 **Ready to Withdraw:** ${pending:.2f}\n"
-            f"⏳ **On Hold:** ${users[uid]['on_hold']:.2f}\n"
-            f"📊 **Need ${5.00 - pending:.2f} more on hold to release.**\n\n"
-            f"⏱️ Wait 24 hours or complete more accounts.\n"
-            f"💡 Create {int((5.00 - pending) / 0.50)} more accounts to withdraw!"
-        )
-    else:
-        await event.respond(
-            f"⏳ **Withdrawal Requested**\n\n"
-            f"💰 **Amount:** ${pending:.2f}\n"
-            f"📋 **Status:** Processing... (24-48 hours)\n"
-            f"🔒 **Security Verification:** In progress.\n\n"
-            f"✅ You'll receive confirmation shortly.\n"
-            f"📌 Keep creating accounts to earn more!"
-        )
-
-@bot_client.on(events.NewMessage(pattern='/history'))
-async def history_cmd(event):
-    await event.respond(
-        "📜 **Recent Withdrawals**\n\n"
-        "👤 **User @john_doe** - $7.50 - ✅ PAID (1 day ago)\n"
-        "👤 **User @jane_smith** - $6.00 - ✅ PAID (3 days ago)\n"
-        "👤 **User @mike_23** - $12.50 - ✅ PAID (5 days ago)\n"
-        "👤 **User @sarah_7** - $9.00 - ✅ PAID (2 days ago)\n"
-        "👤 **User @alex_99** - $5.50 - ✅ PAID (4 days ago)\n\n"
-        "💳 All payments via Payeer.\n"
-        "⏳ Your turn is coming!\n"
-        "📌 Create more accounts to withdraw faster!"
-    )
-
-@bot_client.on(events.NewMessage(pattern='/help'))
-async def help_cmd(event):
-    await event.respond(
-        "📌 **Gmail Farm Pro - Help**\n\n"
-        "💰 **Earn $0.50 per Gmail account**\n"
-        "✅ **Max 5 pending tasks**\n"
-        "⏱️ **Verification:** 2-5 minutes\n"
-        "❌ **Cancel tasks anytime**\n"
-        "💳 **Min Withdrawal:** $5.00 (10 accounts!)\n"
-        "⏳ **Hold Period:** 24 hours\n"
-        "👤 **Referral Bonus:** $0.20 per referral\n\n"
-        "📌 **Commands:**\n"
-        "➕ `/task` - New account\n"
-        "✅ `/confirm` - Submit for verification\n"
-        "📋 `/tasks` - View your tasks\n"
-        "❌ `/cancel` - Cancel pending task\n"
-        "💰 `/balance` - Check earnings\n"
-        "💳 `/withdraw` - Request payout\n"
-        "📜 `/history` - Recent payments\n"
-        "👤 `/referrals` - Your referral link\n"
-        "❓ `/help` - Show this menu\n\n"
-        "💡 **Tip:** Create 10 accounts = $5.00 withdrawal!\n"
-        "📌 The more you create, the more you earn!"
-    )
-
-# ========== INLINE BUTTONS ==========
-
-@bot_client.on(events.CallbackQuery)
-async def handle_callback(event):
-    data = event.data.decode()
-    
-    if data == "new_task":
-        await task_cmd(event)
-    elif data == "my_tasks":
-        await tasks_cmd(event)
-    elif data == "my_balance":
-        await balance_cmd(event)
-    elif data == "cancel_task":
-        await cancel_cmd(event)
-    elif data == "withdraw":
-        await withdraw_cmd(event)
-    elif data == "help":
-        await help_cmd(event)
-    elif data == "referrals":
-        await referrals_cmd(event)
 
 # ========== START BOT ==========
 
