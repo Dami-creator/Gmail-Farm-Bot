@@ -1,5 +1,6 @@
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
+from telethon import Button
 import asyncio
 import re
 import json
@@ -42,7 +43,7 @@ def generate_referral_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 def get_bot_username():
-    return "MyFarmBot12_bot"  # YOUR CORRECT BOT USERNAME
+    return "MyFarmBot12_bot"
 
 @user_client.on(events.NewMessage(from_users=REAL_BOT))
 async def catch_reply(event):
@@ -82,9 +83,9 @@ async def catch_reply(event):
             save_users()
             
             buttons = [
-                [events.InlineButton("✅ Done", b"confirm_account")],
-                [events.InlineButton("🔄 Cancel registration", b"cancel_registration")],
-                [events.InlineButton("❓ How to create account", b"how_to")]
+                [Button.inline("✅ Done", b"confirm_account")],
+                [Button.inline("🔄 Cancel registration", b"cancel_registration")],
+                [Button.inline("❓ How to create account", b"how_to")]
             ]
             
             await bot_client.send_message(
@@ -165,12 +166,12 @@ async def start_cmd(event):
             referrer_info = f"\n👤 **Referred by:** {referred_by}"
         
         buttons = [
-            [events.InlineButton("➕ New Account", b"new_task")],
-            [events.InlineButton("📋 My accounts", b"my_tasks")],
-            [events.InlineButton("💰 Balance", b"my_balance")],
-            [events.InlineButton("👤 My referrals", b"referrals")],
-            [events.InlineButton("🔄 Cancel registration", b"cancel_registration")],
-            [events.InlineButton("❓ Help", b"help")]
+            [Button.inline("➕ New Account", b"new_task")],
+            [Button.inline("📋 My accounts", b"my_tasks")],
+            [Button.inline("💰 Balance", b"my_balance")],
+            [Button.inline("👤 My referrals", b"referrals")],
+            [Button.inline("🔄 Cancel registration", b"cancel_registration")],
+            [Button.inline("❓ Help", b"help")]
         ]
         
         await event.respond(
@@ -526,10 +527,10 @@ async def history_cmd(event):
 async def help_cmd(event):
     try:
         buttons = [
-            [events.InlineButton("➕ New Account", b"new_task")],
-            [events.InlineButton("📋 My accounts", b"my_tasks")],
-            [events.InlineButton("💰 Balance", b"my_balance")],
-            [events.InlineButton("👤 My referrals", b"referrals")]
+            [Button.inline("➕ New Account", b"new_task")],
+            [Button.inline("📋 My accounts", b"my_tasks")],
+            [Button.inline("💰 Balance", b"my_balance")],
+            [Button.inline("👤 My referrals", b"referrals")]
         ]
         
         await event.respond(
