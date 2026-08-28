@@ -13,6 +13,10 @@ BOT_TOKEN = "8639197079:AAGgAfEYfTqQ1YbiJmi2Zykxv-Ln3UneXog"
 ADMIN_ID = 8461617516  # REPLACE WITH YOUR TELEGRAM ID
 # ==================================
 
+# ========== FORCE SESSION FILE ==========
+os.environ["TELETHON_SESSION"] = "user_session"
+# =========================================
+
 REAL_BOT = "@GmailFProBot"
 MAX_PENDING_TASKS = 5
 
@@ -25,9 +29,9 @@ def save_users():
     with open("users.json", "w") as f:
         json.dump(users, f)
 
-# ========== USE SESSION FILE (NOT PHONE NUMBER) ==========
-user_client = TelegramClient("user_session", API_ID, API_HASH)
-bot_client = TelegramClient("bot_session", API_ID, API_HASH)
+# ========== USE SESSION FILE ==========
+user_client = TelegramClient("user_session", API_ID, API_HASH, workdir=".")
+bot_client = TelegramClient("bot_session", API_ID, API_HASH, workdir=".")
 
 waiting_users = []
 
@@ -516,4 +520,11 @@ async def main():
         bot_client.run_until_disconnected()
     )
 
-asyncio.run(main())
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("⏹️ Bot stopped")
+    except Exception as e:
+        print(f"❌ Fatal error: {e}")
+        sys.exit(1)
