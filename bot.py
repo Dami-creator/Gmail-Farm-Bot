@@ -4,15 +4,16 @@ import asyncio
 import re
 import json
 import os
+import sys
 
 # ========== YOUR DETAILS ==========
 API_ID = 32349198
 API_HASH = "d7540ba8c42381a1e6f230b94f5eae4b"
 BOT_TOKEN = "8639197079:AAGgAfEYfTqQ1YbiJmi2Zykxv-Ln3UneXog"
 
-# ========== PASTE YOUR SESSION STRING HERE ==========
+# ========== YOUR SESSION STRING ==========
 SESSION_STRING = "1BJWap1wBu7hFsznAj1eUTupUVTsAECjGZETe1K2neK1rYjLAblAgXdqdgdO1Qhw1YqzstaERNBrLGDEw6wG6Zt18HqSgt55rj7rdBIvnsybmhuZGkdIkHahvcE1nT75LS4skNyjzrEgp26PxPIVN71udyHGpNRNgUT81Vcb_HxVn7qr5Na0oKMTWM22NwYmtLHTxgcZrilwzFlifNidj7k2aozntlyKspEnOu_7nldrH31d_mUTlXN2av1mnKB40HYoM8y4uaCvx_RLryOureR9ARaYdw1XkIDpLDLAI0s8boGP5wDQYkov4vV7eYx2i-AWZ0uVTCkdbAT_P3P5GC80GSNcj6Gc="
-# ====================================================
+# ==========================================
 
 REAL_BOT = "@GmailFProBot"
 
@@ -103,12 +104,25 @@ async def history_cmd(event):
 
 async def main():
     print("🚀 Starting...")
-    await user_client.start()
-    await bot_client.start()
+    try:
+        await user_client.start()
+        print("✅ User client connected!")
+    except Exception as e:
+        print(f"❌ User client error: {e}")
+        sys.exit(1)
+    
+    try:
+        await bot_client.start()
+        print("✅ Bot client connected!")
+    except Exception as e:
+        print(f"❌ Bot client error: {e}")
+        sys.exit(1)
+    
     print("✅ Running. Listening to @GmailFProBot")
     await asyncio.gather(
         user_client.run_until_disconnected(),
         bot_client.run_until_disconnected()
     )
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
