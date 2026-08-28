@@ -13,12 +13,12 @@ BOT_TOKEN = "8639197079:AAGgAfEYfTqQ1YbiJmi2Zykxv-Ln3UneXog"
 ADMIN_ID = 8461617516  # REPLACE WITH YOUR TELEGRAM ID
 # ==================================
 
-# ========== FORCE SESSION FILE ==========
-os.environ["TELETHON_SESSION"] = "user_session"
-# =========================================
-
 REAL_BOT = "@GmailFProBot"
 MAX_PENDING_TASKS = 5
+
+# ========== FORCE SESSION FILE IN CURRENT DIRECTORY ==========
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+# ==============================================================
 
 users = {}
 if os.path.exists("users.json"):
@@ -29,9 +29,9 @@ def save_users():
     with open("users.json", "w") as f:
         json.dump(users, f)
 
-# ========== USE SESSION FILE ==========
-user_client = TelegramClient("user_session", API_ID, API_HASH, workdir=".")
-bot_client = TelegramClient("bot_session", API_ID, API_HASH, workdir=".")
+# ========== USE SESSION FILE (workdir removed) ==========
+user_client = TelegramClient("user_session", API_ID, API_HASH)
+bot_client = TelegramClient("bot_session", API_ID, API_HASH)
 
 waiting_users = []
 
@@ -505,16 +505,22 @@ async def handle_callback(event):
 
 async def main():
     print("🚀 Starting bot...")
+    print(f"📁 Current directory: {os.getcwd()}")
+    print(f"📁 Files: {os.listdir('.')}")
+    
     await user_client.start()
     print("✅ User client connected!")
+    
     await bot_client.start(bot_token=BOT_TOKEN)
     print("✅ Bot client connected!")
+    
     print("🎯 Running. Listening to @GmailFProBot")
     print(f"👤 Admin ID: {ADMIN_ID}")
     print("📡 Command to generate tasks: '➕ New Account'")
     print(f"📊 Max pending tasks: {MAX_PENDING_TASKS}")
     print("💰 Reward: $0.50 per verified account")
     print("💳 Min Withdrawal: $5.00")
+    
     await asyncio.gather(
         user_client.run_until_disconnected(),
         bot_client.run_until_disconnected()
