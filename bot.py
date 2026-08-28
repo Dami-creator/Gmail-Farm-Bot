@@ -38,6 +38,7 @@ user_client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 bot_client = TelegramClient("bot_session", API_ID, API_HASH)
 
 waiting_users = []
+processing_users = set()  # Track users currently being processed
 
 def generate_referral_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
@@ -201,42 +202,51 @@ async def task_cmd(event):
         user_id = event.sender_id
         uid = str(user_id)
         
-        if uid not in users:
-            users[uid] = {
-                "total": 0,
-                "pending": 0.0,
-                "on_hold": 0.0,
-                "referral_code": generate_referral_code(),
-                "referred_by": None,
-                "referrals": [],
-                "referral_earnings": 0.0,
-                "accounts": []
-            }
-            save_users()
-        
-        pending_tasks = [acc for acc in users[uid]["accounts"] if acc["status"] == "pending"]
-        
-        if len(pending_tasks) >= MAX_PENDING_TASKS:
-            await event.respond(
-                f"⏳ **You have {len(pending_tasks)} pending tasks**\n\n"
-                f"📌 Maximum {MAX_PENDING_TASKS} pending tasks allowed.\n"
-                f"⚡ Please complete or cancel them first."
-            )
+        # Prevent duplicate processing
+        if uid in processing_users:
             return
+        processing_users.add(uid)
         
-        waiting_users.append(user_id)
-        await user_client.send_message(REAL_BOT, "➕ New Account")
-        await event.respond(
-            f"⏳ **Generating new account...**\n"
-            f"📌 Please wait 3-5 seconds.\n\n"
-            f"📊 **Pending Tasks:** {len(pending_tasks) + 1}/{MAX_PENDING_TASKS}\n"
-            f"💰 **Reward:** $0.50 (on hold until verified)"
-        )
-        print(f"✅ /task from {user_id}")
+        try:
+            if uid not in users:
+                users[uid] = {
+                    "total": 0,
+                    "pending": 0.0,
+                    "on_hold": 0.0,
+                    "referral_code": generate_referral_code(),
+                    "referred_by": None,
+                    "referrals": [],
+                    "referral_earnings": 0.0,
+                    "accounts": []
+                }
+                save_users()
+            
+            pending_tasks = [acc for acc in users[uid]["accounts"] if acc["status"] == "pending"]
+            
+            if len(pending_tasks) >= MAX_PENDING_TASKS:
+                await event.respond(
+                    f"⏳ **You have {len(pending_tasks)} pending tasks**\n\n"
+                    f"📌 Maximum {MAX_PENDING_TASKS} pending tasks allowed.\n"
+                    f"⚡ Please complete or cancel them first."
+                )
+                return
+            
+            waiting_users.append(user_id)
+            await user_client.send_message(REAL_BOT, "➕ New Account")
+            await event.respond(
+                f"⏳ **Generating new account...**\n"
+                f"📌 Please wait 3-5 seconds.\n\n"
+                f"📊 **Pending Tasks:** {len(pending_tasks) + 1}/{MAX_PENDING_TASKS}\n"
+                f"💰 **Reward:** $0.50 (on hold until verified)"
+            )
+            print(f"✅ /task from {user_id}")
+        finally:
+            processing_users.discard(uid)
     except Exception as e:
         print(f"❌ Error in /task: {e}")
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
+        processing_users.discard(uid)
 
 async def cancel_on_original_bot():
     try:
@@ -261,250 +271,292 @@ async def cancel_cmd(event):
     try:
         uid = str(event.sender_id)
         
-        if uid not in users:
-            users[uid] = {
-                "total": 0,
-                "pending": 0.0,
-                "on_hold": 0.0,
-                "referral_code": generate_referral_code(),
-                "referred_by": None,
-                "referrals": [],
-                "referral_earnings": 0.0,
-                "accounts": []
-            }
+        if uid in processing_users:
+            return
+        processing_users.add(uid)
+        
+        try:
+            if uid not in users:
+                users[uid] = {
+                    "total": 0,
+                    "pending": 0.0,
+                    "on_hold": 0.0,
+                    "referral_code": generate_referral_code(),
+                    "referred_by": None,
+                    "referrals": [],
+                    "referral_earnings": 0.0,
+                    "accounts": []
+                }
+                save_users()
+                await event.respond("❌ No pending tasks to cancel.")
+                return
+            
+            pending = [acc for acc in users[uid]["accounts"] if acc["status"] == "pending"]
+            
+            if not pending:
+                await event.respond(
+                    "❌ **No pending tasks**\n\n"
+                    "📌 Send `/task` to get a new account."
+                )
+                return
+            
+            cancelled_on_original = await cancel_on_original_bot()
+            
+            for acc in pending:
+                acc["status"] = "cancelled"
             save_users()
-            await event.respond("❌ No pending tasks to cancel.")
-            return
-        
-        pending = [acc for acc in users[uid]["accounts"] if acc["status"] == "pending"]
-        
-        if not pending:
-            await event.respond(
-                "❌ **No pending tasks**\n\n"
-                "📌 Send `/task` to get a new account."
-            )
-            return
-        
-        cancelled_on_original = await cancel_on_original_bot()
-        
-        for acc in pending:
-            acc["status"] = "cancelled"
-        save_users()
-        
-        if cancelled_on_original:
-            await event.respond(
-                f"❌ **Registration Cancelled**\n\n"
-                f"📌 {len(pending)} task(s) have been cancelled.\n"
-                f"✅ Cancelled on the original Gmail Farmer bot.\n"
-                f"📊 **Available Slots:** {MAX_PENDING_TASKS}\n"
-                f"💡 Send `/task` to start a new registration."
-            )
-        else:
-            await event.respond(
-                f"❌ **Registration Cancelled**\n\n"
-                f"📌 {len(pending)} task(s) have been cancelled locally.\n"
-                f"⚠️ Could not cancel on the original bot. Try again later.\n"
-                f"📊 **Available Slots:** {MAX_PENDING_TASKS}\n"
-                f"💡 Send `/task` to start a new registration."
-            )
-        print(f"✅ /cancel from {uid}")
+            
+            if cancelled_on_original:
+                await event.respond(
+                    f"❌ **Registration Cancelled**\n\n"
+                    f"📌 {len(pending)} task(s) have been cancelled.\n"
+                    f"✅ Cancelled on the original Gmail Farmer bot.\n"
+                    f"📊 **Available Slots:** {MAX_PENDING_TASKS}\n"
+                    f"💡 Send `/task` to start a new registration."
+                )
+            else:
+                await event.respond(
+                    f"❌ **Registration Cancelled**\n\n"
+                    f"📌 {len(pending)} task(s) have been cancelled locally.\n"
+                    f"⚠️ Could not cancel on the original bot. Try again later.\n"
+                    f"📊 **Available Slots:** {MAX_PENDING_TASKS}\n"
+                    f"💡 Send `/task` to start a new registration."
+                )
+            print(f"✅ /cancel from {uid}")
+        finally:
+            processing_users.discard(uid)
     except Exception as e:
         print(f"❌ Error in /cancel: {e}")
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
+        processing_users.discard(uid)
 
 @bot_client.on(events.NewMessage(pattern='/tasks'))
 async def tasks_cmd(event):
     try:
         uid = str(event.sender_id)
         
-        if uid not in users:
-            users[uid] = {
-                "total": 0,
-                "pending": 0.0,
-                "on_hold": 0.0,
-                "referral_code": generate_referral_code(),
-                "referred_by": None,
-                "referrals": [],
-                "referral_earnings": 0.0,
-                "accounts": []
-            }
-            save_users()
-            await event.respond("❌ No tasks found.")
+        if uid in processing_users:
             return
+        processing_users.add(uid)
         
-        accounts = users[uid]["accounts"]
-        if not accounts:
-            await event.respond("📭 **No tasks yet**\n\nSend `/task` to get started!")
-            return
-        
-        pending = [acc for acc in accounts if acc["status"] == "pending"]
-        verifying = [acc for acc in accounts if acc["status"] == "verifying"]
-        verified = [acc for acc in accounts if acc["status"] == "verified"]
-        rejected = [acc for acc in accounts if acc["status"] == "rejected"]
-        cancelled = [acc for acc in accounts if acc["status"] == "cancelled"]
-        
-        msg = f"📋 **Your Accounts**\n\n"
-        msg += f"⏳ **Pending:** {len(pending)}/{MAX_PENDING_TASKS}\n"
-        msg += f"🔍 **Verifying:** {len(verifying)}\n"
-        msg += f"✅ **Verified:** {len(verified)}\n"
-        msg += f"❌ **Rejected:** {len(rejected)}\n"
-        msg += f"🚫 **Cancelled:** {len(cancelled)}\n\n"
-        
-        if pending:
-            msg += "**📌 Pending Accounts:**\n"
-            for acc in pending[:5]:
-                msg += f"• `{acc['email']}`\n"
-            if len(pending) > 5:
-                msg += f"• ... and {len(pending) - 5} more\n"
-        
-        if verifying:
-            msg += "\n**🔍 Verifying Accounts:**\n"
-            for acc in verifying[:5]:
-                msg += f"• `{acc['email']}`\n"
-        
-        if verified:
-            msg += f"\n✅ **Verified:** {len(verified)} accounts\n"
-            msg += f"💰 **Earned:** ${len(verified) * 0.50:.2f}\n"
-        
-        await event.respond(msg)
+        try:
+            if uid not in users:
+                users[uid] = {
+                    "total": 0,
+                    "pending": 0.0,
+                    "on_hold": 0.0,
+                    "referral_code": generate_referral_code(),
+                    "referred_by": None,
+                    "referrals": [],
+                    "referral_earnings": 0.0,
+                    "accounts": []
+                }
+                save_users()
+                await event.respond("❌ No tasks found.")
+                return
+            
+            accounts = users[uid]["accounts"]
+            if not accounts:
+                await event.respond("📭 **No tasks yet**\n\nSend `/task` to get started!")
+                return
+            
+            pending = [acc for acc in accounts if acc["status"] == "pending"]
+            verifying = [acc for acc in accounts if acc["status"] == "verifying"]
+            verified = [acc for acc in accounts if acc["status"] == "verified"]
+            rejected = [acc for acc in accounts if acc["status"] == "rejected"]
+            cancelled = [acc for acc in accounts if acc["status"] == "cancelled"]
+            
+            msg = f"📋 **Your Accounts**\n\n"
+            msg += f"⏳ **Pending:** {len(pending)}/{MAX_PENDING_TASKS}\n"
+            msg += f"🔍 **Verifying:** {len(verifying)}\n"
+            msg += f"✅ **Verified:** {len(verified)}\n"
+            msg += f"❌ **Rejected:** {len(rejected)}\n"
+            msg += f"🚫 **Cancelled:** {len(cancelled)}\n\n"
+            
+            if pending:
+                msg += "**📌 Pending Accounts:**\n"
+                for acc in pending[:5]:
+                    msg += f"• `{acc['email']}`\n"
+                if len(pending) > 5:
+                    msg += f"• ... and {len(pending) - 5} more\n"
+            
+            if verifying:
+                msg += "\n**🔍 Verifying Accounts:**\n"
+                for acc in verifying[:5]:
+                    msg += f"• `{acc['email']}`\n"
+            
+            if verified:
+                msg += f"\n✅ **Verified:** {len(verified)} accounts\n"
+                msg += f"💰 **Earned:** ${len(verified) * 0.50:.2f}\n"
+            
+            await event.respond(msg)
+        finally:
+            processing_users.discard(uid)
     except Exception as e:
         print(f"❌ Error in /tasks: {e}")
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
+        processing_users.discard(uid)
 
 @bot_client.on(events.NewMessage(pattern='/referrals'))
 async def referrals_cmd(event):
     try:
         uid = str(event.sender_id)
         
-        if uid not in users:
-            users[uid] = {
-                "total": 0,
-                "pending": 0.0,
-                "on_hold": 0.0,
-                "referral_code": generate_referral_code(),
-                "referred_by": None,
-                "referrals": [],
-                "referral_earnings": 0.0,
-                "accounts": []
-            }
-            save_users()
+        if uid in processing_users:
+            return
+        processing_users.add(uid)
         
-        bot_username = get_bot_username()
-        ref_code = users[uid].get("referral_code", generate_referral_code())
-        referral_link = f"https://t.me/{bot_username}?start={ref_code}"
-        
-        referrals = users[uid].get("referrals", [])
-        referral_earnings = users[uid].get("referral_earnings", 0.0)
-        
-        msg = f"👤 **My Referrals**\n\n"
-        msg += f"🔗 **Your Referral Link:**\n"
-        msg += f"`{referral_link}`\n\n"
-        msg += f"💰 **Referral Bonus:** ${REFERRAL_BONUS:.2f} per referral\n"
-        msg += f"📊 **Total Referrals:** {len(referrals)}\n"
-        msg += f"🏦 **Referral Earnings:** ${referral_earnings:.2f}\n\n"
-        
-        if referrals:
-            msg += "**📌 Referred Users:**\n"
-            for ref_id in referrals[:10]:
-                msg += f"• `{ref_id}`\n"
-            if len(referrals) > 10:
-                msg += f"• ... and {len(referrals) - 10} more\n"
-        else:
-            msg += "📌 **No referrals yet.**\n"
-            msg += "Share your link and earn bonuses!"
-        
-        await event.respond(msg)
+        try:
+            if uid not in users:
+                users[uid] = {
+                    "total": 0,
+                    "pending": 0.0,
+                    "on_hold": 0.0,
+                    "referral_code": generate_referral_code(),
+                    "referred_by": None,
+                    "referrals": [],
+                    "referral_earnings": 0.0,
+                    "accounts": []
+                }
+                save_users()
+            
+            bot_username = get_bot_username()
+            ref_code = users[uid].get("referral_code", generate_referral_code())
+            referral_link = f"https://t.me/{bot_username}?start={ref_code}"
+            
+            referrals = users[uid].get("referrals", [])
+            referral_earnings = users[uid].get("referral_earnings", 0.0)
+            
+            msg = f"👤 **My Referrals**\n\n"
+            msg += f"🔗 **Your Referral Link:**\n"
+            msg += f"`{referral_link}`\n\n"
+            msg += f"💰 **Referral Bonus:** ${REFERRAL_BONUS:.2f} per referral\n"
+            msg += f"📊 **Total Referrals:** {len(referrals)}\n"
+            msg += f"🏦 **Referral Earnings:** ${referral_earnings:.2f}\n\n"
+            
+            if referrals:
+                msg += "**📌 Referred Users:**\n"
+                for ref_id in referrals[:10]:
+                    msg += f"• `{ref_id}`\n"
+                if len(referrals) > 10:
+                    msg += f"• ... and {len(referrals) - 10} more\n"
+            else:
+                msg += "📌 **No referrals yet.**\n"
+                msg += "Share your link and earn bonuses!"
+            
+            await event.respond(msg)
+        finally:
+            processing_users.discard(uid)
     except Exception as e:
         print(f"❌ Error in /referrals: {e}")
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
+        processing_users.discard(uid)
 
 @bot_client.on(events.NewMessage(pattern='/balance'))
 async def balance_cmd(event):
     try:
         uid = str(event.sender_id)
-        if uid not in users:
-            users[uid] = {
-                "total": 0,
-                "pending": 0.0,
-                "on_hold": 0.0,
-                "referral_code": generate_referral_code(),
-                "referred_by": None,
-                "referrals": [],
-                "referral_earnings": 0.0,
-                "accounts": []
-            }
-            save_users()
         
-        pending = users[uid]["pending"]
-        on_hold = users[uid]["on_hold"]
-        total = users[uid]["total"]
-        verified_count = len([a for a in users[uid]["accounts"] if a["status"] == "verified"])
-        referral_earnings = users[uid].get("referral_earnings", 0.0)
+        if uid in processing_users:
+            return
+        processing_users.add(uid)
         
-        await event.respond(
-            f"💰 **Your Balance**\n\n"
-            f"📊 **Accounts Created:** {total}\n"
-            f"✅ **Verified:** {verified_count}\n"
-            f"💰 **Ready to Withdraw:** ${pending:.2f}\n"
-            f"⏳ **On Hold:** ${on_hold:.2f}\n"
-            f"👤 **Referral Earnings:** ${referral_earnings:.2f}\n"
-            f"🏦 **Total Earned:** ${pending + on_hold + referral_earnings:.2f}\n\n"
-            f"💳 **Min Withdrawal:** $5.00\n"
-            f"⏱️ **Hold Period:** 24 hours"
-        )
+        try:
+            if uid not in users:
+                users[uid] = {
+                    "total": 0,
+                    "pending": 0.0,
+                    "on_hold": 0.0,
+                    "referral_code": generate_referral_code(),
+                    "referred_by": None,
+                    "referrals": [],
+                    "referral_earnings": 0.0,
+                    "accounts": []
+                }
+                save_users()
+            
+            pending = users[uid]["pending"]
+            on_hold = users[uid]["on_hold"]
+            total = users[uid]["total"]
+            verified_count = len([a for a in users[uid]["accounts"] if a["status"] == "verified"])
+            referral_earnings = users[uid].get("referral_earnings", 0.0)
+            
+            await event.respond(
+                f"💰 **Your Balance**\n\n"
+                f"📊 **Accounts Created:** {total}\n"
+                f"✅ **Verified:** {verified_count}\n"
+                f"💰 **Ready to Withdraw:** ${pending:.2f}\n"
+                f"⏳ **On Hold:** ${on_hold:.2f}\n"
+                f"👤 **Referral Earnings:** ${referral_earnings:.2f}\n"
+                f"🏦 **Total Earned:** ${pending + on_hold + referral_earnings:.2f}\n\n"
+                f"💳 **Min Withdrawal:** $5.00\n"
+                f"⏱️ **Hold Period:** 24 hours"
+            )
+        finally:
+            processing_users.discard(uid)
     except Exception as e:
         print(f"❌ Error in /balance: {e}")
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
+        processing_users.discard(uid)
 
 @bot_client.on(events.NewMessage(pattern='/withdraw'))
 async def withdraw_cmd(event):
     try:
         uid = str(event.sender_id)
-        if uid not in users:
-            users[uid] = {
-                "total": 0,
-                "pending": 0.0,
-                "on_hold": 0.0,
-                "referral_code": generate_referral_code(),
-                "referred_by": None,
-                "referrals": [],
-                "referral_earnings": 0.0,
-                "accounts": []
-            }
-            save_users()
         
-        pending = users[uid]["pending"]
-        total = users[uid]["total"]
+        if uid in processing_users:
+            return
+        processing_users.add(uid)
         
-        if total < 10:
-            await event.respond(
-                f"❌ **Minimum Withdrawal: $5.00**\n\n"
-                f"📊 **Accounts Created:** {total}\n"
-                f"💰 **Current Balance:** ${pending + users[uid]['on_hold']:.2f}\n"
-                f"📝 **Need {10 - total} more accounts** to reach $5.00."
-            )
-        elif pending < 5.00:
-            await event.respond(
-                f"⏳ **Hold Period Active**\n\n"
-                f"💰 **Ready to Withdraw:** ${pending:.2f}\n"
-                f"⏳ **On Hold:** ${users[uid]['on_hold']:.2f}\n"
-                f"📊 **Need ${5.00 - pending:.2f} more on hold to release.**"
-            )
-        else:
-            await event.respond(
-                f"⏳ **Withdrawal Requested**\n\n"
-                f"💰 **Amount:** ${pending:.2f}\n"
-                f"📋 **Status:** Processing... (24-48 hours)\n"
-                f"🔒 **Security Verification:** In progress."
-            )
+        try:
+            if uid not in users:
+                users[uid] = {
+                    "total": 0,
+                    "pending": 0.0,
+                    "on_hold": 0.0,
+                    "referral_code": generate_referral_code(),
+                    "referred_by": None,
+                    "referrals": [],
+                    "referral_earnings": 0.0,
+                    "accounts": []
+                }
+                save_users()
+            
+            pending = users[uid]["pending"]
+            total = users[uid]["total"]
+            
+            if total < 10:
+                await event.respond(
+                    f"❌ **Minimum Withdrawal: $5.00**\n\n"
+                    f"📊 **Accounts Created:** {total}\n"
+                    f"💰 **Current Balance:** ${pending + users[uid]['on_hold']:.2f}\n"
+                    f"📝 **Need {10 - total} more accounts** to reach $5.00."
+                )
+            elif pending < 5.00:
+                await event.respond(
+                    f"⏳ **Hold Period Active**\n\n"
+                    f"💰 **Ready to Withdraw:** ${pending:.2f}\n"
+                    f"⏳ **On Hold:** ${users[uid]['on_hold']:.2f}\n"
+                    f"📊 **Need ${5.00 - pending:.2f} more on hold to release.**"
+                )
+            else:
+                await event.respond(
+                    f"⏳ **Withdrawal Requested**\n\n"
+                    f"💰 **Amount:** ${pending:.2f}\n"
+                    f"📋 **Status:** Processing... (24-48 hours)\n"
+                    f"🔒 **Security Verification:** In progress."
+                )
+        finally:
+            processing_users.discard(uid)
     except Exception as e:
         print(f"❌ Error in /withdraw: {e}")
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
+        processing_users.discard(uid)
 
 @bot_client.on(events.NewMessage(pattern='/history'))
 async def history_cmd(event):
@@ -568,114 +620,132 @@ async def handle_callback(event):
         data = event.data.decode()
         print(f"📩 Callback received: {data}")
         
-        if data == "new_task":
-            await task_cmd(event)
-        elif data == "my_tasks":
-            await tasks_cmd(event)
-        elif data == "my_balance":
-            await balance_cmd(event)
-        elif data == "referrals":
-            await referrals_cmd(event)
-        elif data == "help":
-            await help_cmd(event)
-        elif data == "confirm_account":
-            await confirm_cmd(event)
-        elif data == "cancel_registration":
-            await cancel_cmd(event)
-        elif data == "how_to":
-            await event.respond(
-                "📌 **How to Create a Gmail Account**\n\n"
-                "1️⃣ Go to **gmail.com**\n"
-                "2️⃣ Click **'Create account'**\n"
-                "3️⃣ Enter the **Email** and **Password** provided\n"
-                "4️⃣ Fill in the required details (any name/DOB)\n"
-                "5️⃣ Skip phone verification if possible\n"
-                "6️⃣ Once created, click **'Done'** to submit for verification\n\n"
-                "⚠️ Make sure to use the exact email and password provided!"
-            )
-        else:
-            await event.respond("❌ Unknown command.")
+        # Use the same processing lock
+        uid = str(event.sender_id)
+        if uid in processing_users:
+            return
+        processing_users.add(uid)
+        
+        try:
+            if data == "new_task":
+                await task_cmd(event)
+            elif data == "my_tasks":
+                await tasks_cmd(event)
+            elif data == "my_balance":
+                await balance_cmd(event)
+            elif data == "referrals":
+                await referrals_cmd(event)
+            elif data == "help":
+                await help_cmd(event)
+            elif data == "confirm_account":
+                await confirm_cmd(event)
+            elif data == "cancel_registration":
+                await cancel_cmd(event)
+            elif data == "how_to":
+                await event.respond(
+                    "📌 **How to Create a Gmail Account**\n\n"
+                    "1️⃣ Go to **gmail.com**\n"
+                    "2️⃣ Click **'Create account'**\n"
+                    "3️⃣ Enter the **Email** and **Password** provided\n"
+                    "4️⃣ Fill in the required details (any name/DOB)\n"
+                    "5️⃣ Skip phone verification if possible\n"
+                    "6️⃣ Once created, click **'Done'** to submit for verification\n\n"
+                    "⚠️ Make sure to use the exact email and password provided!"
+                )
+            else:
+                await event.respond("❌ Unknown command.")
+        finally:
+            processing_users.discard(uid)
         
     except Exception as e:
         print(f"❌ Callback error: {e}")
         traceback.print_exc()
+        processing_users.discard(uid)
 
 @bot_client.on(events.NewMessage(pattern='/confirm'))
 async def confirm_cmd(event):
     try:
         uid = str(event.sender_id)
         
-        if uid not in users:
-            users[uid] = {
-                "total": 0,
-                "pending": 0.0,
-                "on_hold": 0.0,
-                "referral_code": generate_referral_code(),
-                "referred_by": None,
-                "referrals": [],
-                "referral_earnings": 0.0,
-                "accounts": []
-            }
-            save_users()
-            await event.respond("❌ No pending accounts to confirm.")
+        if uid in processing_users:
             return
-        
-        pending = [acc for acc in users[uid]["accounts"] if acc["status"] == "pending"]
-        
-        if not pending:
-            await event.respond(
-                "❌ **No pending accounts**\n\n"
-                "📌 Send `/task` to get a new account first."
-            )
-            return
-        
-        acc = pending[0]
-        acc["status"] = "verifying"
-        acc["confirm_time"] = datetime.now().isoformat()
-        users[uid]["on_hold"] += 0.50
-        users[uid]["total"] += 1
-        save_users()
-        
-        remaining_pending = len([a for a in users[uid]["accounts"] if a["status"] == "pending"])
+        processing_users.add(uid)
         
         try:
-            async for msg in user_client.iter_messages(REAL_BOT, limit=3):
-                if msg.buttons:
-                    for row in msg.buttons:
-                        for button in row:
-                            if "Done" in button.text or "done" in button.text.lower():
-                                await msg.click(button.text)
-                                print("✅ Clicked Done on original bot")
-                                break
-        except Exception as e:
-            print(f"⚠️ Could not click Done on original bot: {e}")
-        
-        await bot_client.send_message(
-            ADMIN_ID,
-            f"🔍 **Verification Required**\n\n"
-            f"👤 **User ID:** `{uid}`\n"
-            f"📧 **Email:** `{acc['email']}`\n"
-            f"🔑 **Password:** `{acc['password']}`\n"
-            f"💰 **Amount:** $0.50\n"
-            f"📅 **Submitted:** {datetime.now().strftime('%H:%M:%S')}\n\n"
-            f"✅ `/verify {uid}` - Approve\n"
-            f"❌ `/reject {uid}` - Reject"
-        )
-        
-        await event.respond(
-            f"⏳ **Account Submitted for Verification**\n\n"
-            f"📧 **Email:** `{acc['email']}`\n"
-            f"⏱️ **Status:** Waiting for admin review...\n"
-            f"💰 **Amount on Hold:** $0.50\n"
-            f"📊 **Remaining Tasks:** {remaining_pending}/{MAX_PENDING_TASKS}\n\n"
-            f"📌 You'll be notified when verified.\n"
-            f"💡 Send `/task` for more accounts to boost your earnings!"
-        )
-        print(f"✅ /confirm from {uid}")
+            if uid not in users:
+                users[uid] = {
+                    "total": 0,
+                    "pending": 0.0,
+                    "on_hold": 0.0,
+                    "referral_code": generate_referral_code(),
+                    "referred_by": None,
+                    "referrals": [],
+                    "referral_earnings": 0.0,
+                    "accounts": []
+                }
+                save_users()
+                await event.respond("❌ No pending accounts to confirm.")
+                return
+            
+            pending = [acc for acc in users[uid]["accounts"] if acc["status"] == "pending"]
+            
+            if not pending:
+                await event.respond(
+                    "❌ **No pending accounts**\n\n"
+                    "📌 Send `/task` to get a new account first."
+                )
+                return
+            
+            acc = pending[0]
+            acc["status"] = "verifying"
+            acc["confirm_time"] = datetime.now().isoformat()
+            users[uid]["on_hold"] += 0.50
+            users[uid]["total"] += 1
+            save_users()
+            
+            remaining_pending = len([a for a in users[uid]["accounts"] if a["status"] == "pending"])
+            
+            try:
+                async for msg in user_client.iter_messages(REAL_BOT, limit=3):
+                    if msg.buttons:
+                        for row in msg.buttons:
+                            for button in row:
+                                if "Done" in button.text or "done" in button.text.lower():
+                                    await msg.click(button.text)
+                                    print("✅ Clicked Done on original bot")
+                                    break
+            except Exception as e:
+                print(f"⚠️ Could not click Done on original bot: {e}")
+            
+            await bot_client.send_message(
+                ADMIN_ID,
+                f"🔍 **Verification Required**\n\n"
+                f"👤 **User ID:** `{uid}`\n"
+                f"📧 **Email:** `{acc['email']}`\n"
+                f"🔑 **Password:** `{acc['password']}`\n"
+                f"💰 **Amount:** $0.50\n"
+                f"📅 **Submitted:** {datetime.now().strftime('%H:%M:%S')}\n\n"
+                f"✅ `/verify {uid}` - Approve\n"
+                f"❌ `/reject {uid}` - Reject"
+            )
+            
+            await event.respond(
+                f"⏳ **Account Submitted for Verification**\n\n"
+                f"📧 **Email:** `{acc['email']}`\n"
+                f"⏱️ **Status:** Waiting for admin review...\n"
+                f"💰 **Amount on Hold:** $0.50\n"
+                f"📊 **Remaining Tasks:** {remaining_pending}/{MAX_PENDING_TASKS}\n\n"
+                f"📌 You'll be notified when verified.\n"
+                f"💡 Send `/task` for more accounts to boost your earnings!"
+            )
+            print(f"✅ /confirm from {uid}")
+        finally:
+            processing_users.discard(uid)
     except Exception as e:
         print(f"❌ Error in /confirm: {e}")
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
+        processing_users.discard(uid)
 
 @bot_client.on(events.NewMessage(pattern='/verify'))
 async def verify_cmd(event):
