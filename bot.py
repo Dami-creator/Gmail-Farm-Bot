@@ -38,7 +38,7 @@ user_client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 bot_client = TelegramClient("bot_session", API_ID, API_HASH)
 
 waiting_users = []
-processing_users = set()  # Track users currently being processed
+processing_users = set()
 
 def generate_referral_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
@@ -196,13 +196,11 @@ async def start_cmd(event):
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
 
-@bot_client.on(events.NewMessage(pattern='/task'))
-async def task_cmd(event):
+async def task_handler(event):
     try:
         user_id = event.sender_id
         uid = str(user_id)
         
-        # Prevent duplicate processing
         if uid in processing_users:
             return
         processing_users.add(uid)
@@ -243,10 +241,14 @@ async def task_cmd(event):
         finally:
             processing_users.discard(uid)
     except Exception as e:
-        print(f"❌ Error in /task: {e}")
+        print(f"❌ Error in task_handler: {e}")
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
         processing_users.discard(uid)
+
+@bot_client.on(events.NewMessage(pattern='/task'))
+async def task_cmd(event):
+    await task_handler(event)
 
 async def cancel_on_original_bot():
     try:
@@ -614,53 +616,42 @@ async def help_cmd(event):
 @bot_client.on(events.CallbackQuery)
 async def handle_callback(event):
     try:
-        # Answer immediately to prevent double responses
         await event.answer()
         
         data = event.data.decode()
         print(f"📩 Callback received: {data}")
         
-        # Use the same processing lock
-        uid = str(event.sender_id)
-        if uid in processing_users:
-            return
-        processing_users.add(uid)
-        
-        try:
-            if data == "new_task":
-                await task_cmd(event)
-            elif data == "my_tasks":
-                await tasks_cmd(event)
-            elif data == "my_balance":
-                await balance_cmd(event)
-            elif data == "referrals":
-                await referrals_cmd(event)
-            elif data == "help":
-                await help_cmd(event)
-            elif data == "confirm_account":
-                await confirm_cmd(event)
-            elif data == "cancel_registration":
-                await cancel_cmd(event)
-            elif data == "how_to":
-                await event.respond(
-                    "📌 **How to Create a Gmail Account**\n\n"
-                    "1️⃣ Go to **gmail.com**\n"
-                    "2️⃣ Click **'Create account'**\n"
-                    "3️⃣ Enter the **Email** and **Password** provided\n"
-                    "4️⃣ Fill in the required details (any name/DOB)\n"
-                    "5️⃣ Skip phone verification if possible\n"
-                    "6️⃣ Once created, click **'Done'** to submit for verification\n\n"
-                    "⚠️ Make sure to use the exact email and password provided!"
-                )
-            else:
-                await event.respond("❌ Unknown command.")
-        finally:
-            processing_users.discard(uid)
+        if data == "new_task":
+            await task_handler(event)
+        elif data == "my_tasks":
+            await tasks_cmd(event)
+        elif data == "my_balance":
+            await balance_cmd(event)
+        elif data == "referrals":
+            await referrals_cmd(event)
+        elif data == "help":
+            await help_cmd(event)
+        elif data == "confirm_account":
+            await confirm_cmd(event)
+        elif data == "cancel_registration":
+            await cancel_cmd(event)
+        elif data == "how_to":
+            await event.respond(
+                "📌 **How to Create a Gmail Account**\n\n"
+                "1️⃣ Go to **gmail.com**\n"
+                "2️⃣ Click **'Create account'**\n"
+                "3️⃣ Enter the **Email** and **Password** provided\n"
+                "4️⃣ Fill in the required details (any name/DOB)\n"
+                "5️⃣ Skip phone verification if possible\n"
+                "6️⃣ Once created, click **'Done'** to submit for verification\n\n"
+                "⚠️ Make sure to use the exact email and password provided!"
+            )
+        else:
+            await event.respond("❌ Unknown command.")
         
     except Exception as e:
         print(f"❌ Callback error: {e}")
         traceback.print_exc()
-        processing_users.discard(uid)
 
 @bot_client.on(events.NewMessage(pattern='/confirm'))
 async def confirm_cmd(event):
