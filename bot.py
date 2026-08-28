@@ -1,14 +1,18 @@
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 import asyncio
 import re
 import json
 import os
 
-# ========== YOUR DETAILS (ALREADY FILLED) ==========
+# ========== YOUR DETAILS ==========
 API_ID = 32349198
 API_HASH = "d7540ba8c42381a1e6f230b94f5eae4b"
 BOT_TOKEN = "8639197079:AAGgAfEYfTqQ1YbiJmi2Zykxv-Ln3UneXog"
-# ===================================================
+
+# ========== PASTE YOUR SESSION STRING HERE ==========
+SESSION_STRING = "1BJWap1wBu1OfKyiPvjqJKvBQvD7qxfZbxpx6Uv46BKk-lnO7Vz0UL2l9WvdvcUTARzAalvwAAZ4BBPwOlRaqpcbnPQn4uyldVoxSq0VE6Z9CwPmTA9Vcxq6vuSeekv4TV43RTmrZshxYpKV0ev4dKv1KnLTD9Y6yC1ltqFKrqwuxW4hjT-gacqhwgtRW7u657ZuFoplBW4GSZDrBzqmFPWlwoavmgWz39GQNOx9lhLSLr-ZD7EAepyyTxbX04waP7tTET0PwuMvRcoIEAQZvRh1g9QOZX6fj8Tm1nZ37KkfrRnM5_KZ8LYq09HdKCI4QQE3vu0IWlOSdBBpEEvMweN5bhFP7vMQ="
+# ====================================================
 
 REAL_BOT = "@GmailFProBot"
 
@@ -21,7 +25,7 @@ def save_users():
     with open("users.json", "w") as f:
         json.dump(users, f)
 
-user_client = TelegramClient("user_session", API_ID, API_HASH)
+user_client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 bot_client = TelegramClient("front_bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 waiting_users = []
