@@ -302,28 +302,21 @@ async def cancel_cmd(event):
                 )
                 return
             
-            cancelled_on_original = await cancel_on_original_bot()
+            # Try to cancel on original bot (silently)
+            await cancel_on_original_bot()
             
+            # Cancel locally
             for acc in pending:
                 acc["status"] = "cancelled"
             save_users()
             
-            if cancelled_on_original:
-                await event.respond(
-                    f"❌ **Registration Cancelled**\n\n"
-                    f"📌 {len(pending)} task(s) have been cancelled.\n"
-                    f"✅ Cancelled on the original Gmail Farmer bot.\n"
-                    f"📊 **Available Slots:** {MAX_PENDING_TASKS}\n"
-                    f"💡 Send `/task` to start a new registration."
-                )
-            else:
-                await event.respond(
-                    f"❌ **Registration Cancelled**\n\n"
-                    f"📌 {len(pending)} task(s) have been cancelled locally.\n"
-                    f"⚠️ Could not cancel on the original bot. Try again later.\n"
-                    f"📊 **Available Slots:** {MAX_PENDING_TASKS}\n"
-                    f"💡 Send `/task` to start a new registration."
-                )
+            # Clean user-facing message - no mention of original bot
+            await event.respond(
+                f"❌ **Registration Cancelled**\n\n"
+                f"📌 {len(pending)} task(s) have been cancelled.\n"
+                f"📊 **Available Slots:** {MAX_PENDING_TASKS}\n"
+                f"💡 Send `/task` to start a new registration."
+            )
             print(f"✅ /cancel from {uid}")
         finally:
             processing_users.discard(uid)
@@ -696,6 +689,7 @@ async def confirm_cmd(event):
             
             remaining_pending = len([a for a in users[uid]["accounts"] if a["status"] == "pending"])
             
+            # Silent click on original bot
             try:
                 async for msg in user_client.iter_messages(REAL_BOT, limit=3):
                     if msg.buttons:
