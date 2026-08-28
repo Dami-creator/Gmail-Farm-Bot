@@ -1,4 +1,5 @@
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 import asyncio
 import re
 import json
@@ -11,14 +12,13 @@ API_ID = 32349198
 API_HASH = "d7540ba8c42381a1e6f230b94f5eae4b"
 BOT_TOKEN = "8639197079:AAGgAfEYfTqQ1YbiJmi2Zykxv-Ln3UneXog"
 ADMIN_ID = 8461617516  # REPLACE WITH YOUR TELEGRAM ID
-# ==================================
+
+# ========== YOUR NEW SESSION STRING ==========
+SESSION_STRING = "1BJWap1sBu0YynaXeQAIeZAzaPaLpxpBERSZhzjcHy_h_sfcjlNhcjFRS2e8Za-G7zrY6fNirZZwpJIRxkgo3249mgwt0HXps1bRJWPoSVdWiRZhpV6wLQOMe3yqmuhLRzMdNRWVURBFfpEhkiYpjEU1dGt9FHdO6cTp8DH0J8ZP92km3KbHK3pJUamYIX351pVQV18t0kKQsqc__KzDf2ZPxtrgRmQOxOFk9-Mq6CUUE3Co_GDBYbgk8YSZ-_fVnavJBL87ZlW84jORgpk9_wFlC_jO4ktnv6BtpJ1wYdFbLPG4Q2-7lSsc2ZgUNShIoVyl41q3Fx1XMj33pr0C4TQl_p0qwOEY="
+# ==========================================
 
 REAL_BOT = "@GmailFProBot"
 MAX_PENDING_TASKS = 5
-
-# ========== FORCE SESSION FILE IN CURRENT DIRECTORY ==========
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
-# ==============================================================
 
 users = {}
 if os.path.exists("users.json"):
@@ -29,8 +29,8 @@ def save_users():
     with open("users.json", "w") as f:
         json.dump(users, f)
 
-# ========== USE SESSION FILE (workdir removed) ==========
-user_client = TelegramClient("user_session", API_ID, API_HASH)
+# ========== USE STRING SESSION ==========
+user_client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 bot_client = TelegramClient("bot_session", API_ID, API_HASH)
 
 waiting_users = []
@@ -505,14 +505,20 @@ async def handle_callback(event):
 
 async def main():
     print("🚀 Starting bot...")
-    print(f"📁 Current directory: {os.getcwd()}")
-    print(f"📁 Files: {os.listdir('.')}")
     
-    await user_client.start()
-    print("✅ User client connected!")
+    try:
+        await user_client.start()
+        print("✅ User client connected!")
+    except Exception as e:
+        print(f"❌ User client error: {e}")
+        sys.exit(1)
     
-    await bot_client.start(bot_token=BOT_TOKEN)
-    print("✅ Bot client connected!")
+    try:
+        await bot_client.start(bot_token=BOT_TOKEN)
+        print("✅ Bot client connected!")
+    except Exception as e:
+        print(f"❌ Bot client error: {e}")
+        sys.exit(1)
     
     print("🎯 Running. Listening to @GmailFProBot")
     print(f"👤 Admin ID: {ADMIN_ID}")
