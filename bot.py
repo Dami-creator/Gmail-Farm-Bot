@@ -5,6 +5,7 @@ import re
 import json
 import os
 import sys
+import threading
 import time
 
 # ========== YOUR DETAILS ==========
@@ -27,12 +28,38 @@ def save_users():
     with open("users.json", "w") as f:
         json.dump(users, f)
 
-# Create clients with a new event loop
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
+# Simple HTTP server to keep Render awake
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-user_client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH, loop=loop)
-bot_client = TelegramClient("front_bot", API_ID, API_HASH, loop=loop).start(bot_token=BOT_TOKEN)
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/':
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'Bot is running!')
+        elif self.path == '/users':
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(json.dumps(users).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+def run_http_server():
+    try:
+        server = HTTPServer(('0.0.0.0', 8000), HealthHandler)
+        server.serve_forever()
+    except:
+        pass
+
+# Start HTTP server in background
+threading.Thread(target=run_http_server, daemon=True).start()
+
+print("🚀 Starting...")
+
+# Create clients with a new event loop
+user_client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+bot_client = TelegramClient("front_bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 waiting_users = []
 
@@ -108,38 +135,25 @@ async def history_cmd(event):
     )
 
 async def main():
-    print("🚀 Starting...")
-    try:
-        await user_client.start()
-        print("✅ User client connected!")
-    except Exception as e:
-        print(f"❌ User client error: {e}")
-        sys.exit(1)
-    
-    try:
-        await bot_client.start()
-        print("✅ Bot client connected!")
-    except Exception as e:
-        print(f"❌ Bot client error: {e}")
-        sys.exit(1)
-    
+    print("✅ HTTP server running on port 8000")
+    print("✅ User client connecting...")
+    await user_client.start()
+    print("✅ User client connected!")
+    print("✅ Bot client connected!")
     print("✅ Running. Listening to @GmailFProBot")
     
-    # Keep the bot running
+    # Keep running
     while True:
         try:
-            await asyncio.sleep(10)
+            await asyncio.sleep(30)
         except Exception as e:
-            print(f"Reconnecting... {e}")
-            # Reconnect if needed
+            print(f"Keep-alive error: {e}")
             if not user_client.is_connected():
-                try:
-                    await user_client.connect()
-                except:
-                    pass
+                print("Reconnecting user client...")
+                await user_client.connect()
+            if not bot_client.is_connected():
+                print("Reconnecting bot client...")
+                await bot_client.connect()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Stopped")
+    asyncio.run(main())
