@@ -19,6 +19,7 @@ SESSION_STRING = "1BJWap1wBu7hFsznAj1eUTupUVTsAECjGZETe1K2neK1rYjLAblAgXdqdgdO1Q
 
 REAL_BOT = "@GmailFProBot"
 
+# Load users
 users = {}
 if os.path.exists("users.json"):
     with open("users.json", "r") as f:
@@ -28,22 +29,17 @@ def save_users():
     with open("users.json", "w") as f:
         json.dump(users, f)
 
-# Simple HTTP server to keep Render awake
+# Simple HTTP server for Render health checks
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == '/':
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b'Bot is running!')
-        elif self.path == '/users':
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(json.dumps(users).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'Bot is running!')
+    
+    def log_message(self, format, *args):
+        pass  # Suppress logs
 
 def run_http_server():
     try:
@@ -55,18 +51,19 @@ def run_http_server():
 # Start HTTP server in background
 threading.Thread(target=run_http_server, daemon=True).start()
 
-print("🚀 Starting...")
+print("🚀 Starting bot...")
+print(f"✅ Bot token: {BOT_TOKEN[:10]}...")
 
-# Create clients with a new event loop
+# Create clients
 user_client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-bot_client = TelegramClient("front_bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+bot_client = TelegramClient("bot_session", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 waiting_users = []
 
 @user_client.on(events.NewMessage(from_users=REAL_BOT))
 async def catch_reply(event):
     text = event.raw_text
-    print(f"[CAPTURED] {text}")
+    print(f"[CAPTURED FROM REAL BOT] {text}")
     
     email_match = re.search(r'[a-zA-Z0-9._%+-]+@gmail\.com', text)
     password_match = re.search(r'(?:pass|pw|password)[\s:]+([^\s\n]+)', text, re.IGNORECASE)
@@ -81,20 +78,27 @@ async def catch_reply(event):
         users[str(user_id)]["accounts"].append({"email": email, "password": password})
         save_users()
         
-        await bot_client.send_message(
-            user_id,
-            f"📧 New Account\nEmail: {email}\nPassword: {password}\n\nCreate it, then /confirm"
-        )
+        try:
+            await bot_client.send_message(
+                user_id,
+                f"📧 New Account\nEmail: {email}\nPassword: {password}\n\nCreate it, then /confirm"
+            )
+            print(f"✅ Sent credentials to user {user_id}")
+        except Exception as e:
+            print(f"❌ Failed to send to user: {e}")
 
 @bot_client.on(events.NewMessage(pattern='/start'))
 async def start_cmd(event):
     await event.respond("💰 Gmail Farm Pro\nSend /task to get an account")
+    print(f"✅ /start received from {event.sender_id}")
 
 @bot_client.on(events.NewMessage(pattern='/task'))
 async def task_cmd(event):
-    waiting_users.append(event.sender_id)
+    user_id = event.sender_id
+    waiting_users.append(user_id)
     await user_client.send_message(REAL_BOT, "/new")
     await event.respond("⏳ Generating...")
+    print(f"✅ /task received from {user_id}")
 
 @bot_client.on(events.NewMessage(pattern='/confirm'))
 async def confirm_cmd(event):
@@ -106,6 +110,7 @@ async def confirm_cmd(event):
     save_users()
     await user_client.send_message(REAL_BOT, "Done")
     await event.respond(f"✅ +$1.00\nTotal pending: ${users[uid]['pending']:.2f}")
+    print(f"✅ /confirm received from {event.sender_id}")
 
 @bot_client.on(events.NewMessage(pattern='/balance'))
 async def balance_cmd(event):
@@ -113,6 +118,7 @@ async def balance_cmd(event):
     if uid not in users:
         users[uid] = {"total": 0, "pending": 0.0, "accounts": []}
     await event.respond(f"💰 Balance: ${users[uid]['pending']:.2f}")
+    print(f"✅ /balance received from {event.sender_id}")
 
 @bot_client.on(events.NewMessage(pattern='/withdraw'))
 async def withdraw_cmd(event):
@@ -124,6 +130,7 @@ async def withdraw_cmd(event):
         await event.respond(f"❌ Need 50 accounts. You have {total}.")
     else:
         await event.respond("⏳ Withdrawal requested. Under review.")
+    print(f"✅ /withdraw received from {event.sender_id}")
 
 @bot_client.on(events.NewMessage(pattern='/history'))
 async def history_cmd(event):
@@ -133,27 +140,53 @@ async def history_cmd(event):
         "User @jane_smith - $48.00 - PAID\n"
         "User @mike_23 - $61.00 - PAID"
     )
+    print(f"✅ /history received from {event.sender_id}")
+
+@bot_client.on(events.NewMessage)
+async def echo_all(event):
+    """Log all messages for debugging"""
+    print(f"📩 Message from {event.sender_id}: {event.text}")
 
 async def main():
     print("✅ HTTP server running on port 8000")
-    print("✅ User client connecting...")
+    
+    print("📱 Connecting user client...")
     await user_client.start()
     print("✅ User client connected!")
-    print("✅ Bot client connected!")
-    print("✅ Running. Listening to @GmailFProBot")
     
-    # Keep running
+    print("🤖 Connecting bot client...")
+    await bot_client.start()
+    print("✅ Bot client connected!")
+    
+    print("🎯 Bot is ready! Listening for commands...")
+    print(f"📡 Bot username: Check @BotFather")
+    print("📡 Listening to @GmailFProBot for credentials...")
+    
+    # Keep the bot running
     while True:
         try:
-            await asyncio.sleep(30)
+            await asyncio.sleep(60)
         except Exception as e:
             print(f"Keep-alive error: {e}")
+            # Reconnect if disconnected
             if not user_client.is_connected():
                 print("Reconnecting user client...")
-                await user_client.connect()
+                try:
+                    await user_client.connect()
+                except Exception as e2:
+                    print(f"User reconnect failed: {e2}")
             if not bot_client.is_connected():
                 print("Reconnecting bot client...")
-                await bot_client.connect()
+                try:
+                    await bot_client.connect()
+                except Exception as e2:
+                    print(f"Bot reconnect failed: {e2}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("⏹️ Bot stopped")
+    except Exception as e:
+        print(f"❌ Fatal error: {e}")
+        sys.exit(1)
