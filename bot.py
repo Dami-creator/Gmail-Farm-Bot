@@ -6,7 +6,6 @@ import json
 import os
 import sys
 import threading
-import time
 
 # ========== YOUR DETAILS ==========
 API_ID = 32349198
@@ -19,16 +18,6 @@ SESSION_STRING = "1BJWap1wBu7hFsznAj1eUTupUVTsAECjGZETe1K2neK1rYjLAblAgXdqdgdO1Q
 
 REAL_BOT = "@GmailFProBot"
 
-# Load users
-users = {}
-if os.path.exists("users.json"):
-    with open("users.json", "r") as f:
-        users = json.load(f)
-
-def save_users():
-    with open("users.json", "w") as f:
-        json.dump(users, f)
-
 # Simple HTTP server for Render health checks
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -39,7 +28,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.wfile.write(b'Bot is running!')
     
     def log_message(self, format, *args):
-        pass  # Suppress logs
+        pass
 
 def run_http_server():
     try:
@@ -51,12 +40,25 @@ def run_http_server():
 # Start HTTP server in background
 threading.Thread(target=run_http_server, daemon=True).start()
 
-print("🚀 Starting bot...")
-print(f"✅ Bot token: {BOT_TOKEN[:10]}...")
+# Load users
+users = {}
+if os.path.exists("users.json"):
+    with open("users.json", "r") as f:
+        users = json.load(f)
 
-# Create clients
-user_client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-bot_client = TelegramClient("bot_session", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+def save_users():
+    with open("users.json", "w") as f:
+        json.dump(users, f)
+
+print("🚀 Starting bot...")
+
+# Create a single event loop
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
+# Create clients with the same loop
+user_client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH, loop=loop)
+bot_client = TelegramClient("bot_session", API_ID, API_HASH, loop=loop)
 
 waiting_users = []
 
@@ -142,11 +144,6 @@ async def history_cmd(event):
     )
     print(f"✅ /history received from {event.sender_id}")
 
-@bot_client.on(events.NewMessage)
-async def echo_all(event):
-    """Log all messages for debugging"""
-    print(f"📩 Message from {event.sender_id}: {event.text}")
-
 async def main():
     print("✅ HTTP server running on port 8000")
     
@@ -155,11 +152,10 @@ async def main():
     print("✅ User client connected!")
     
     print("🤖 Connecting bot client...")
-    await bot_client.start()
+    await bot_client.start(bot_token=BOT_TOKEN)
     print("✅ Bot client connected!")
     
     print("🎯 Bot is ready! Listening for commands...")
-    print(f"📡 Bot username: Check @BotFather")
     print("📡 Listening to @GmailFProBot for credentials...")
     
     # Keep the bot running
@@ -168,25 +164,12 @@ async def main():
             await asyncio.sleep(60)
         except Exception as e:
             print(f"Keep-alive error: {e}")
-            # Reconnect if disconnected
-            if not user_client.is_connected():
-                print("Reconnecting user client...")
-                try:
-                    await user_client.connect()
-                except Exception as e2:
-                    print(f"User reconnect failed: {e2}")
-            if not bot_client.is_connected():
-                print("Reconnecting bot client...")
-                try:
-                    await bot_client.connect()
-                except Exception as e2:
-                    print(f"Bot reconnect failed: {e2}")
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("⏹️ Bot stopped")
-    except Exception as e:
-        print(f"❌ Fatal error: {e}")
-        sys.exit(1)
+# Run everything in the same event loop
+try:
+    loop.run_until_complete(main())
+except KeyboardInterrupt:
+    print("⏹️ Bot stopped")
+except Exception as e:
+    print(f"❌ Fatal error: {e}")
+    sys.exit(1)
