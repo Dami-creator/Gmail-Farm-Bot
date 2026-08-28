@@ -1,0 +1,110 @@
+from telethon import TelegramClient, events
+import asyncio
+import re
+import json
+import os
+
+# ========== YOUR DETAILS (ALREADY FILLED) ==========
+API_ID = 32349198
+API_HASH = "d7540ba8c42381a1e6f230b94f5eae4b"
+BOT_TOKEN = "8639197079:AAGgAfEYfTqQ1YbiJmi2Zykxv-Ln3UneXog"
+# ===================================================
+
+REAL_BOT = "@GmailFProBot"
+
+users = {}
+if os.path.exists("users.json"):
+    with open("users.json", "r") as f:
+        users = json.load(f)
+
+def save_users():
+    with open("users.json", "w") as f:
+        json.dump(users, f)
+
+user_client = TelegramClient("user_session", API_ID, API_HASH)
+bot_client = TelegramClient("front_bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+
+waiting_users = []
+
+@user_client.on(events.NewMessage(from_users=REAL_BOT))
+async def catch_reply(event):
+    text = event.raw_text
+    print(f"[CAPTURED] {text}")
+    
+    email_match = re.search(r'[a-zA-Z0-9._%+-]+@gmail\.com', text)
+    password_match = re.search(r'(?:pass|pw|password)[\s:]+([^\s\n]+)', text, re.IGNORECASE)
+    
+    if email_match and password_match and waiting_users:
+        user_id = waiting_users.pop(0)
+        email = email_match.group(0)
+        password = password_match.group(1)
+        
+        if str(user_id) not in users:
+            users[str(user_id)] = {"total": 0, "pending": 0.0, "accounts": []}
+        users[str(user_id)]["accounts"].append({"email": email, "password": password})
+        save_users()
+        
+        await bot_client.send_message(
+            user_id,
+            f"📧 New Account\nEmail: {email}\nPassword: {password}\n\nCreate it, then /confirm"
+        )
+
+@bot_client.on(events.NewMessage(pattern='/start'))
+async def start_cmd(event):
+    await event.respond("💰 Gmail Farm Pro\nSend /task to get an account")
+
+@bot_client.on(events.NewMessage(pattern='/task'))
+async def task_cmd(event):
+    waiting_users.append(event.sender_id)
+    await user_client.send_message(REAL_BOT, "/new")
+    await event.respond("⏳ Generating...")
+
+@bot_client.on(events.NewMessage(pattern='/confirm'))
+async def confirm_cmd(event):
+    uid = str(event.sender_id)
+    if uid not in users:
+        users[uid] = {"total": 0, "pending": 0.0, "accounts": []}
+    users[uid]["total"] += 1
+    users[uid]["pending"] += 1.00
+    save_users()
+    await user_client.send_message(REAL_BOT, "Done")
+    await event.respond(f"✅ +$1.00\nTotal pending: ${users[uid]['pending']:.2f}")
+
+@bot_client.on(events.NewMessage(pattern='/balance'))
+async def balance_cmd(event):
+    uid = str(event.sender_id)
+    if uid not in users:
+        users[uid] = {"total": 0, "pending": 0.0, "accounts": []}
+    await event.respond(f"💰 Balance: ${users[uid]['pending']:.2f}")
+
+@bot_client.on(events.NewMessage(pattern='/withdraw'))
+async def withdraw_cmd(event):
+    uid = str(event.sender_id)
+    if uid not in users:
+        users[uid] = {"total": 0, "pending": 0.0, "accounts": []}
+    total = users[uid]["total"]
+    if total < 50:
+        await event.respond(f"❌ Need 50 accounts. You have {total}.")
+    else:
+        await event.respond("⏳ Withdrawal requested. Under review.")
+
+@bot_client.on(events.NewMessage(pattern='/history'))
+async def history_cmd(event):
+    await event.respond(
+        "📜 Recent Withdrawals\n\n"
+        "User @john_doe - $52.00 - PAID\n"
+        "User @jane_smith - $48.00 - PAID\n"
+        "User @mike_23 - $61.00 - PAID"
+    )
+
+async def main():
+    print("🚀 Starting...")
+    await user_client.start()
+    await bot_client.start()
+    print("✅ Running. Listening to @GmailFProBot")
+    await asyncio.gather(
+        user_client.run_until_disconnected(),
+        bot_client.run_until_disconnected()
+    )
+
+asyncio.run(main())
