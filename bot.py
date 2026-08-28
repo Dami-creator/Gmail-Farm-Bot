@@ -5,6 +5,7 @@ import re
 import json
 import os
 import sys
+import time
 
 # ========== YOUR DETAILS ==========
 API_ID = 32349198
@@ -26,8 +27,12 @@ def save_users():
     with open("users.json", "w") as f:
         json.dump(users, f)
 
-user_client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-bot_client = TelegramClient("front_bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+# Create clients with a new event loop
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
+user_client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH, loop=loop)
+bot_client = TelegramClient("front_bot", API_ID, API_HASH, loop=loop).start(bot_token=BOT_TOKEN)
 
 waiting_users = []
 
@@ -119,10 +124,22 @@ async def main():
         sys.exit(1)
     
     print("✅ Running. Listening to @GmailFProBot")
-    await asyncio.gather(
-        user_client.run_until_disconnected(),
-        bot_client.run_until_disconnected()
-    )
+    
+    # Keep the bot running
+    while True:
+        try:
+            await asyncio.sleep(10)
+        except Exception as e:
+            print(f"Reconnecting... {e}")
+            # Reconnect if needed
+            if not user_client.is_connected():
+                try:
+                    await user_client.connect()
+                except:
+                    pass
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Stopped")
