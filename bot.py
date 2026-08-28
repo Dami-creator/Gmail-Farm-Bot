@@ -83,9 +83,9 @@ async def catch_reply(event):
             save_users()
             
             buttons = [
-                [Button.inline("✅ Done", b"confirm_account")],
-                [Button.inline("🔄 Cancel registration", b"cancel_registration")],
-                [Button.inline("❓ How to create account", b"how_to")]
+                [Button.inline("✅ Done", "confirm_account")],
+                [Button.inline("🔄 Cancel registration", "cancel_registration")],
+                [Button.inline("❓ How to create account", "how_to")]
             ]
             
             await bot_client.send_message(
@@ -166,12 +166,12 @@ async def start_cmd(event):
             referrer_info = f"\n👤 **Referred by:** {referred_by}"
         
         buttons = [
-            [Button.inline("➕ New Account", b"new_task")],
-            [Button.inline("📋 My accounts", b"my_tasks")],
-            [Button.inline("💰 Balance", b"my_balance")],
-            [Button.inline("👤 My referrals", b"referrals")],
-            [Button.inline("🔄 Cancel registration", b"cancel_registration")],
-            [Button.inline("❓ Help", b"help")]
+            [Button.inline("➕ New Account", "new_task")],
+            [Button.inline("📋 My accounts", "my_tasks")],
+            [Button.inline("💰 Balance", "my_balance")],
+            [Button.inline("👤 My referrals", "referrals")],
+            [Button.inline("🔄 Cancel registration", "cancel_registration")],
+            [Button.inline("❓ Help", "help")]
         ]
         
         await event.respond(
@@ -527,10 +527,10 @@ async def history_cmd(event):
 async def help_cmd(event):
     try:
         buttons = [
-            [Button.inline("➕ New Account", b"new_task")],
-            [Button.inline("📋 My accounts", b"my_tasks")],
-            [Button.inline("💰 Balance", b"my_balance")],
-            [Button.inline("👤 My referrals", b"referrals")]
+            [Button.inline("➕ New Account", "new_task")],
+            [Button.inline("📋 My accounts", "my_tasks")],
+            [Button.inline("💰 Balance", "my_balance")],
+            [Button.inline("👤 My referrals", "referrals")]
         ]
         
         await event.respond(
@@ -562,6 +562,9 @@ async def help_cmd(event):
 @bot_client.on(events.CallbackQuery)
 async def handle_callback(event):
     try:
+        # Answer immediately to prevent double responses
+        await event.answer()
+        
         data = event.data.decode()
         print(f"📩 Callback received: {data}")
         
@@ -593,11 +596,9 @@ async def handle_callback(event):
         else:
             await event.respond("❌ Unknown command.")
         
-        await event.answer()
     except Exception as e:
         print(f"❌ Callback error: {e}")
         traceback.print_exc()
-        await event.answer("❌ Error occurred. Please try again.")
 
 @bot_client.on(events.NewMessage(pattern='/confirm'))
 async def confirm_cmd(event):
