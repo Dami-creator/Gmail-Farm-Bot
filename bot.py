@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 API_ID = 32349198
 API_HASH = "d7540ba8c42381a1e6f230b94f5eae4b"
 BOT_TOKEN = "8639197079:AAGgAfEYfTqQ1YbiJmi2Zykxv-Ln3UneXog"
-ADMIN_ID = 5512618804  # REPLACE WITH YOUR TELEGRAM ID
+ADMIN_ID = 8461617516  # REPLACE WITH YOUR TELEGRAM ID
 # ==================================
 
 REAL_BOT = "@GmailFProBot"
