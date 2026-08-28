@@ -43,6 +43,16 @@ def generate_referral_code():
 def get_bot_username():
     return "MyFarmBot_12"
 
+def make_buttons(button_list):
+    """Convert button list to Telethon format"""
+    result = []
+    for row in button_list:
+        row_buttons = []
+        for btn in row:
+            row_buttons.append((btn["text"], btn["callback_data"]))
+        result.append(row_buttons)
+    return result
+
 @user_client.on(events.NewMessage(from_users=REAL_BOT))
 async def catch_reply(event):
     text = event.raw_text
@@ -75,15 +85,15 @@ async def catch_reply(event):
             "password": password,
             "status": "pending",
             "timestamp": datetime.now().isoformat(),
-            "original_message_id": event.id  # Store the original message ID
+            "original_message_id": event.id
         })
         save_users()
         
-        buttons = [
+        buttons = make_buttons([
             [{"text": "✅ Done", "callback_data": "confirm_account"}],
             [{"text": "🔄 Cancel registration", "callback_data": "cancel_registration"}],
             [{"text": "❓ How to create account", "callback_data": "how_to"}]
-        ]
+        ])
         
         await bot_client.send_message(
             user_id,
@@ -103,86 +113,90 @@ async def catch_reply(event):
 
 @bot_client.on(events.NewMessage(pattern='/start'))
 async def start_cmd(event):
-    uid = str(event.sender_id)
-    
-    args = event.text.split()
-    ref_code = None
-    if len(args) > 1:
-        ref_code = args[1]
-    
-    if uid not in users:
-        users[uid] = {
-            "total": 0,
-            "pending": 0.0,
-            "on_hold": 0.0,
-            "referral_code": generate_referral_code(),
-            "referred_by": None,
-            "referrals": [],
-            "referral_earnings": 0.0,
-            "accounts": []
-        }
+    try:
+        uid = str(event.sender_id)
+        print(f"✅ /start received from {uid}")
         
-        if ref_code:
-            for user_id, data in users.items():
-                if data.get("referral_code") == ref_code and user_id != uid:
-                    users[uid]["referred_by"] = user_id
-                    users[user_id]["referrals"].append(uid)
-                    save_users()
-                    
-                    await bot_client.send_message(
-                        int(user_id),
-                        f"👤 **New Referral!**\n\n"
-                        f"Someone joined using your referral link!\n"
-                        f"💰 You'll earn **${REFERRAL_BONUS:.2f}** when they verify their first account.\n\n"
-                        f"📊 Total referrals: {len(users[user_id]['referrals'])}"
-                    )
-                    
-                    await event.respond(
-                        "✅ **You were referred!**\n\n"
-                        "💰 You'll both earn bonuses when you verify your first account!\n"
-                        "📌 Send `/task` to get started!"
-                    )
-                    break
+        if uid not in users:
+            users[uid] = {
+                "total": 0,
+                "pending": 0.0,
+                "on_hold": 0.0,
+                "referral_code": generate_referral_code(),
+                "referred_by": None,
+                "referrals": [],
+                "referral_earnings": 0.0,
+                "accounts": []
+            }
+            save_users()
         
-        save_users()
-    
-    bot_username = get_bot_username()
-    ref_code = users[uid].get("referral_code", generate_referral_code())
-    if "referral_code" not in users[uid]:
-        users[uid]["referral_code"] = ref_code
-        save_users()
-    
-    referral_link = f"https://t.me/{bot_username}?start={ref_code}"
-    
-    referred_by = users[uid].get("referred_by")
-    referrer_info = ""
-    if referred_by:
-        referrer_info = f"\n👤 **Referred by:** {referred_by}"
-    
-    buttons = [
-        [{"text": "➕ New Account", "callback_data": "new_task"}],
-        [{"text": "📋 My accounts", "callback_data": "my_tasks"}],
-        [{"text": "💰 Balance", "callback_data": "my_balance"}],
-        [{"text": "👤 My referrals", "callback_data": "referrals"}],
-        [{"text": "🔄 Cancel registration", "callback_data": "cancel_registration"}],
-        [{"text": "❓ Help", "callback_data": "help"}]
-    ]
-    
-    await event.respond(
-        f"💰 **Gmail Farmer PRO** 💰\n\n"
-        f"💵 Earn **$0.50** per Gmail account!\n"
-        f"✅ Quick verification (2-5 mins)\n"
-        f"✅ Create up to 5 accounts at once\n"
-        f"✅ Cancel anytime\n"
-        f"✅ Withdraw from $5.00 (just 10 accounts!)\n"
-        f"✅ 24-hour hold period\n"
-        f"✅ **Referral Bonus: ${REFERRAL_BONUS:.2f}** per referral{referrer_info}\n\n"
-        f"🔗 **Your Referral Link:**\n"
-        f"`{referral_link}`\n\n"
-        f"📌 **Menu:**",
-        buttons=buttons
-    )
-    print(f"✅ /start from {event.sender_id}")
+        args = event.text.split()
+        ref_code = None
+        if len(args) > 1:
+            ref_code = args[1]
+            if ref_code:
+                for user_id, data in users.items():
+                    if data.get("referral_code") == ref_code and user_id != uid:
+                        users[uid]["referred_by"] = user_id
+                        users[user_id]["referrals"].append(uid)
+                        save_users()
+                        
+                        await bot_client.send_message(
+                            int(user_id),
+                            f"👤 **New Referral!**\n\n"
+                            f"Someone joined using your referral link!\n"
+                            f"💰 You'll earn **${REFERRAL_BONUS:.2f}** when they verify their first account.\n\n"
+                            f"📊 Total referrals: {len(users[user_id]['referrals'])}"
+                        )
+                        
+                        await event.respond(
+                            "✅ **You were referred!**\n\n"
+                            "💰 You'll both earn bonuses when you verify your first account!\n"
+                            "📌 Send /task to get started!"
+                        )
+                        break
+        
+        bot_username = get_bot_username()
+        ref_code = users[uid].get("referral_code", generate_referral_code())
+        if "referral_code" not in users[uid]:
+            users[uid]["referral_code"] = ref_code
+            save_users()
+        
+        referral_link = f"https://t.me/{bot_username}?start={ref_code}"
+        
+        referred_by = users[uid].get("referred_by")
+        referrer_info = ""
+        if referred_by:
+            referrer_info = f"\n👤 **Referred by:** {referred_by}"
+        
+        buttons = make_buttons([
+            [{"text": "➕ New Account", "callback_data": "new_task"}],
+            [{"text": "📋 My accounts", "callback_data": "my_tasks"}],
+            [{"text": "💰 Balance", "callback_data": "my_balance"}],
+            [{"text": "👤 My referrals", "callback_data": "referrals"}],
+            [{"text": "🔄 Cancel registration", "callback_data": "cancel_registration"}],
+            [{"text": "❓ Help", "callback_data": "help"}]
+        ])
+        
+        await event.respond(
+            f"💰 **Gmail Farmer PRO** 💰\n\n"
+            f"💵 Earn **$0.50** per Gmail account!\n"
+            f"✅ Quick verification (2-5 mins)\n"
+            f"✅ Create up to 5 accounts at once\n"
+            f"✅ Cancel anytime\n"
+            f"✅ Withdraw from $5.00 (just 10 accounts!)\n"
+            f"✅ 24-hour hold period\n"
+            f"✅ **Referral Bonus: ${REFERRAL_BONUS:.2f}** per referral{referrer_info}\n\n"
+            f"🔗 **Your Referral Link:**\n"
+            f"`{referral_link}`\n\n"
+            f"📌 **Menu:**",
+            buttons=buttons
+        )
+        print(f"✅ /start response sent to {uid}")
+        
+    except Exception as e:
+        print(f"❌ Error in /start: {e}")
+        await event.respond("⚠️ An error occurred. Please try again later.")
 
 @bot_client.on(events.NewMessage(pattern='/task'))
 async def task_cmd(event):
@@ -223,9 +237,7 @@ async def task_cmd(event):
     print(f"✅ /task from {user_id}")
 
 async def cancel_on_original_bot():
-    """Find and click the Cancel registration button on the original bot"""
     try:
-        # Get the last message from the original bot
         async for msg in user_client.iter_messages(REAL_BOT, limit=5):
             if msg.buttons:
                 for row in msg.buttons:
@@ -270,10 +282,8 @@ async def cancel_cmd(event):
         )
         return
     
-    # Try to cancel on the original bot
     cancelled_on_original = await cancel_on_original_bot()
     
-    # Mark as cancelled locally
     for acc in pending:
         acc["status"] = "cancelled"
     save_users()
@@ -483,6 +493,13 @@ async def history_cmd(event):
 
 @bot_client.on(events.NewMessage(pattern='/help'))
 async def help_cmd(event):
+    buttons = make_buttons([
+        [{"text": "➕ New Account", "callback_data": "new_task"}],
+        [{"text": "📋 My accounts", "callback_data": "my_tasks"}],
+        [{"text": "💰 Balance", "callback_data": "my_balance"}],
+        [{"text": "👤 My referrals", "callback_data": "referrals"}]
+    ])
+    
     await event.respond(
         "📌 **Gmail Farmer PRO - Help**\n\n"
         "💰 **Earn $0.50 per Gmail account**\n"
@@ -501,10 +518,9 @@ async def help_cmd(event):
         "📜 `/history` - Recent payments\n"
         "👤 `/referrals` - Your referral link\n"
         "❓ `/help` - Show this menu\n\n"
-        "💡 **Tip:** Create 10 accounts = $5.00 withdrawal!"
+        "💡 **Tip:** Create 10 accounts = $5.00 withdrawal!",
+        buttons=buttons
     )
-
-# ========== CALLBACK HANDLER ==========
 
 @bot_client.on(events.CallbackQuery)
 async def handle_callback(event):
@@ -514,26 +530,18 @@ async def handle_callback(event):
         
         if data == "new_task":
             await task_cmd(event)
-        
         elif data == "my_tasks":
             await tasks_cmd(event)
-        
         elif data == "my_balance":
             await balance_cmd(event)
-        
         elif data == "referrals":
             await referrals_cmd(event)
-        
         elif data == "help":
             await help_cmd(event)
-        
         elif data == "confirm_account":
             await confirm_cmd(event)
-        
         elif data == "cancel_registration":
-            # User clicked cancel - call the cancel function
             await cancel_cmd(event)
-        
         elif data == "how_to":
             await event.respond(
                 "📌 **How to Create a Gmail Account**\n\n"
@@ -545,7 +553,6 @@ async def handle_callback(event):
                 "6️⃣ Once created, click **'Done'** to submit for verification\n\n"
                 "⚠️ Make sure to use the exact email and password provided!"
             )
-        
         else:
             await event.respond("❌ Unknown command.")
         
@@ -553,8 +560,6 @@ async def handle_callback(event):
     except Exception as e:
         print(f"❌ Callback error: {e}")
         await event.answer("❌ Error occurred. Please try again.")
-
-# ========== CONFIRM COMMAND ==========
 
 @bot_client.on(events.NewMessage(pattern='/confirm'))
 async def confirm_cmd(event):
@@ -593,7 +598,6 @@ async def confirm_cmd(event):
     
     remaining_pending = len([a for a in users[uid]["accounts"] if a["status"] == "pending"])
     
-    # Click the "Done" button on the original bot
     try:
         async for msg in user_client.iter_messages(REAL_BOT, limit=3):
             if msg.buttons:
@@ -628,8 +632,6 @@ async def confirm_cmd(event):
         f"💡 Send `/task` for more accounts to boost your earnings!"
     )
     print(f"✅ /confirm from {uid}")
-
-# ========== ADMIN COMMANDS ==========
 
 @bot_client.on(events.NewMessage(pattern='/verify'))
 async def verify_cmd(event):
@@ -755,8 +757,6 @@ async def admin_stats_cmd(event):
         f"👤 **Total Referrals:** {total_referrals}\n\n"
         f"📁 Data saved in `users.json`"
     )
-
-# ========== START BOT ==========
 
 async def main():
     print("🚀 Starting bot...")
