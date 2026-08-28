@@ -4,7 +4,7 @@ import re
 import json
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # ========== YOUR DETAILS ==========
 API_ID = 32349198
@@ -25,6 +25,7 @@ def save_users():
     with open("users.json", "w") as f:
         json.dump(users, f)
 
+# ========== USE SESSION FILE (NOT PHONE NUMBER) ==========
 user_client = TelegramClient("user_session", API_ID, API_HASH)
 bot_client = TelegramClient("bot_session", API_ID, API_HASH)
 
