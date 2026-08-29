@@ -10,6 +10,8 @@ from datetime import datetime
 import random
 import string
 import traceback
+import threading
+import time
 
 # ========== YOUR DETAILS ==========
 API_ID = 32349198
@@ -45,6 +47,21 @@ def generate_referral_code():
 
 def get_bot_username():
     return "MyFarmBot12_bot"
+
+# ========== SELF-PING TO KEEP AWAKE ==========
+def self_ping():
+    import urllib.request
+    while True:
+        try:
+            time.sleep(180)  # Ping every 3 minutes
+            urllib.request.urlopen("https://gmail-farm-bot.onrender.com", timeout=5)
+            print("✅ Self-ping successful")
+        except Exception as e:
+            print(f"⚠️ Self-ping failed: {e}")
+
+# Start self-ping in background
+threading.Thread(target=self_ping, daemon=True).start()
+# =============================================
 
 @user_client.on(events.NewMessage(from_users=REAL_BOT))
 async def catch_reply(event):
@@ -302,15 +319,12 @@ async def cancel_cmd(event):
                 )
                 return
             
-            # Try to cancel on original bot (silently)
             await cancel_on_original_bot()
             
-            # Cancel locally
             for acc in pending:
                 acc["status"] = "cancelled"
             save_users()
             
-            # Clean user-facing message - no mention of original bot
             await event.respond(
                 f"❌ **Registration Cancelled**\n\n"
                 f"📌 {len(pending)} task(s) have been cancelled.\n"
@@ -689,7 +703,6 @@ async def confirm_cmd(event):
             
             remaining_pending = len([a for a in users[uid]["accounts"] if a["status"] == "pending"])
             
-            # Silent click on original bot
             try:
                 async for msg in user_client.iter_messages(REAL_BOT, limit=3):
                     if msg.buttons:
@@ -872,11 +885,36 @@ async def admin_stats_cmd(event):
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
 
+# ========== HTTP SERVER FOR RENDER ==========
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'Bot is running!')
+    
+    def log_message(self, format, *args):
+        pass
+
+def run_http_server():
+    try:
+        server = HTTPServer(('0.0.0.0', 8000), HealthHandler)
+        server.serve_forever()
+    except Exception as e:
+        print(f"HTTP server error: {e}")
+
+# Start HTTP server in background
+threading.Thread(target=run_http_server, daemon=True).start()
+# =============================================
+
 async def main():
     print("🚀 Starting bot...")
     print("💰 Reward: $0.50 per verified account")
     print("👤 Referral Bonus: $0.20 per referral")
     print("💳 Min Withdrawal: $5.00")
+    print("🌐 HTTP server running on port 8000")
+    print("🔄 Self-ping active every 3 minutes")
     
     try:
         await user_client.start()
