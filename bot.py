@@ -12,6 +12,7 @@ import string
 import traceback
 import threading
 import time
+import urllib.request
 
 # ========== YOUR DETAILS ==========
 API_ID = 32349198
@@ -41,6 +42,7 @@ bot_client = TelegramClient("bot_session", API_ID, API_HASH)
 
 waiting_users = []
 processing_users = set()
+pending_requests = {}  # Track users waiting for admin to send credentials
 
 def generate_referral_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
@@ -50,16 +52,14 @@ def get_bot_username():
 
 # ========== SELF-PING TO KEEP AWAKE ==========
 def self_ping():
-    import urllib.request
     while True:
         try:
-            time.sleep(180)  # Ping every 3 minutes
+            time.sleep(180)
             urllib.request.urlopen("https://gmail-farm-bot.onrender.com", timeout=5)
             print("✅ Self-ping successful")
         except Exception as e:
             print(f"⚠️ Self-ping failed: {e}")
 
-# Start self-ping in background
 threading.Thread(target=self_ping, daemon=True).start()
 # =============================================
 
@@ -69,58 +69,92 @@ async def catch_reply(event):
         text = event.raw_text
         print(f"[CAPTURED] {text}")
         
-        email_match = re.search(r'[a-zA-Z0-9._%+-]+@gmail\.com', text)
-        password_match = re.search(r'(?:pass|pw|password)[\s:]+([^\s\n]+)', text, re.IGNORECASE)
-        
-        if email_match and password_match and waiting_users:
-            user_id = waiting_users.pop(0)
-            email = email_match.group(0)
-            password = password_match.group(1)
+        # Check if the original bot says "You still have unfinished tasks"
+        if "unfinished tasks" in text.lower() or "complete them" in text.lower():
+            print("✅ Detected pending tasks message from original bot")
             
-            uid = str(user_id)
-            if uid not in users:
-                users[uid] = {
-                    "total": 0,
-                    "pending": 0.0,
-                    "on_hold": 0.0,
-                    "referral_code": generate_referral_code(),
-                    "referred_by": None,
-                    "referrals": [],
-                    "referral_earnings": 0.0,
-                    "accounts": []
-                }
-                save_users()
-            
-            users[uid]["accounts"].append({
-                "email": email,
-                "password": password,
-                "status": "pending",
-                "timestamp": datetime.now().isoformat(),
-                "original_message_id": event.id
-            })
-            save_users()
+            email_match = re.search(r'[a-zA-Z0-9._%+-]+@gmail\.com', text)
+            email_text = ""
+            if email_match:
+                email_text = f"\n{email_match.group(0)}"
             
             buttons = [
-                [Button.inline("✅ Done", "confirm_account")],
-                [Button.inline("🔄 Cancel registration", "cancel_registration")],
-                [Button.inline("❓ How to create account", "how_to")]
+                [Button.inline("➕ New Task", "request_new_task")]
             ]
             
             await bot_client.send_message(
-                user_id,
-                f"📧 **New Account Generated**\n\n"
-                f"👤 **Email:** `{email}`\n"
-                f"🔑 **Password:** `{password}`\n\n"
-                f"⚠️ Be sure to use the specified data, otherwise the account will not be paid.\n\n"
-                f"📌 **Instructions:**\n"
-                f"➡️ Go to Gmail.com\n"
-                f"➡️ Create this account using the details above\n"
-                f"➡️ Click **'Done'** when finished\n\n"
-                f"💰 **Reward:** $0.50 (on hold until verified)\n"
-                f"📊 **Pending Tasks:** {len([a for a in users[uid]['accounts'] if a['status'] == 'pending'])}/{MAX_PENDING_TASKS}",
+                event.sender_id,
+                f"📌 **Complete Previous Tasks**\n\n"
+                f"You still have unfinished tasks.\n"
+                f"Please complete them ✔ or click\n"
+                f"**➕ New Task** to start a fresh one{email_text}",
                 buttons=buttons
             )
-            print(f"✅ Credentials sent to user {user_id}")
+            return
+        
+        # Check for credentials from original bot
+        email_match = re.search(r'[a-zA-Z0-9._%+-]+@gmail\.com', text)
+        password_match = re.search(r'(?:pass|pw|password)[\s:]+([^\s\n]+)', text, re.IGNORECASE)
+        
+        if email_match and password_match:
+            email = email_match.group(0)
+            password = password_match.group(1)
+            
+            # Check if we have a waiting user for manual approval
+            if waiting_users:
+                user_id = waiting_users.pop(0)
+                
+                # Store the credentials in the user's account
+                uid = str(user_id)
+                if uid not in users:
+                    users[uid] = {
+                        "total": 0,
+                        "pending": 0.0,
+                        "on_hold": 0.0,
+                        "referral_code": generate_referral_code(),
+                        "referred_by": None,
+                        "referrals": [],
+                        "referral_earnings": 0.0,
+                        "accounts": []
+                    }
+                    save_users()
+                
+                users[uid]["accounts"].append({
+                    "email": email,
+                    "password": password,
+                    "status": "pending",
+                    "timestamp": datetime.now().isoformat()
+                })
+                save_users()
+                
+                # Send credentials to the user
+                buttons = [
+                    [Button.inline("✅ Done", "confirm_account")],
+                    [Button.inline("🔄 Cancel registration", "cancel_registration")],
+                    [Button.inline("❓ How to create account", "how_to")]
+                ]
+                
+                pending_count = len([a for a in users[uid]['accounts'] if a['status'] == 'pending'])
+                
+                await bot_client.send_message(
+                    user_id,
+                    f"📧 **New Account Generated**\n\n"
+                    f"👤 **Email:** `{email}`\n"
+                    f"🔑 **Password:** `{password}`\n\n"
+                    f"⚠️ Be sure to use the specified data, otherwise the account will not be paid.\n\n"
+                    f"📌 **Instructions:**\n"
+                    f"➡️ Go to Gmail.com\n"
+                    f"➡️ Create this account using the details above\n"
+                    f"➡️ Click **'Done'** when finished\n\n"
+                    f"💰 **Reward:** $0.50 (on hold until verified)\n"
+                    f"📊 **Pending Tasks:** {pending_count}/{MAX_PENDING_TASKS}",
+                    buttons=buttons
+                )
+                print(f"✅ Credentials sent to user {user_id}")
+            else:
+                # No waiting users - store credentials for admin to send manually
+                print(f"⚠️ Credentials received but no waiting user: {email} / {password}")
+                
     except Exception as e:
         print(f"❌ Error in catch_reply: {e}")
         traceback.print_exc()
@@ -184,7 +218,7 @@ async def start_cmd(event):
             referrer_info = f"\n👤 **Referred by:** {referred_by}"
         
         buttons = [
-            [Button.inline("➕ New Account", "new_task")],
+            [Button.inline("➕ Request Account", "new_task")],
             [Button.inline("📋 My accounts", "my_tasks")],
             [Button.inline("💰 Balance", "my_balance")],
             [Button.inline("👤 My referrals", "referrals")],
@@ -213,7 +247,8 @@ async def start_cmd(event):
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
 
-async def task_handler(event):
+@bot_client.on(events.NewMessage(pattern='/task'))
+async def task_cmd(event):
     try:
         user_id = event.sender_id
         uid = str(user_id)
@@ -246,26 +281,133 @@ async def task_handler(event):
                 )
                 return
             
+            # Add user to waiting list for admin to send credentials
             waiting_users.append(user_id)
-            await user_client.send_message(REAL_BOT, "➕ New Account")
-            await event.respond(
-                f"⏳ **Generating new account...**\n"
-                f"📌 Please wait 3-5 seconds.\n\n"
-                f"📊 **Pending Tasks:** {len(pending_tasks) + 1}/{MAX_PENDING_TASKS}\n"
-                f"💰 **Reward:** $0.50 (on hold until verified)"
+            pending_requests[uid] = datetime.now().isoformat()
+            
+            # Notify admin
+            await bot_client.send_message(
+                ADMIN_ID,
+                f"🔍 **New Task Request**\n\n"
+                f"👤 **User ID:** `{uid}`\n"
+                f"📅 **Requested:** {datetime.now().strftime('%H:%M:%S')}\n"
+                f"📊 **Pending Tasks:** {len(pending_tasks)}/{MAX_PENDING_TASKS}\n\n"
+                f"💡 Go to @GmailFProBot and click **'➕ New Task'**\n"
+                f"📌 Then copy and paste the credentials to the user.\n\n"
+                f"✅ To mark as done: `/done {uid}`\n"
+                f"❌ To reject: `/reject {uid}`\n"
+                f"📋 To see all pending: `/pending`"
             )
-            print(f"✅ /task from {user_id}")
+            
+            await event.respond(
+                f"⏳ **Request Received**\n\n"
+                f"📌 An admin will send your credentials shortly.\n"
+                f"⏱️ **Estimated wait:** 1-3 minutes.\n"
+                f"📊 You will be notified when your account is ready.\n\n"
+                f"💡 Please be patient — credentials are sent manually to ensure quality."
+            )
+            print(f"✅ /task request from {user_id}")
         finally:
             processing_users.discard(uid)
     except Exception as e:
-        print(f"❌ Error in task_handler: {e}")
+        print(f"❌ Error in /task: {e}")
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
         processing_users.discard(uid)
 
-@bot_client.on(events.NewMessage(pattern='/task'))
-async def task_cmd(event):
-    await task_handler(event)
+# ========== ADMIN COMMANDS ==========
+
+@bot_client.on(events.NewMessage(pattern='/pending'))
+async def pending_cmd(event):
+    if event.sender_id != ADMIN_ID:
+        await event.respond("⛔ Unauthorized.")
+        return
+    
+    if not waiting_users:
+        await event.respond("📋 **No pending requests**\n\nNo users are currently waiting for credentials.")
+        return
+    
+    msg = f"📋 **Pending Requests**\n\n"
+    msg += f"👤 **Total waiting:** {len(waiting_users)}\n\n"
+    
+    for i, uid in enumerate(waiting_users[:10]):
+        user_data = users.get(str(uid), {})
+        pending_count = len([a for a in user_data.get("accounts", []) if a["status"] == "pending"])
+        request_time = pending_requests.get(str(uid), "Unknown")
+        
+        msg += f"{i+1}. **User ID:** `{uid}`\n"
+        msg += f"   📊 Pending tasks: {pending_count}/{MAX_PENDING_TASKS}\n"
+        msg += f"   ⏱️ Requested: {request_time[:16] if request_time != 'Unknown' else 'Unknown'}\n\n"
+    
+    if len(waiting_users) > 10:
+        msg += f"📌 ... and {len(waiting_users) - 10} more.\n"
+    
+    msg += f"\n💡 To mark as done: `/done [user_id]`\n"
+    msg += f"❌ To reject: `/reject [user_id]`"
+    
+    await event.respond(msg)
+
+@bot_client.on(events.NewMessage(pattern='/done'))
+async def done_cmd(event):
+    if event.sender_id != ADMIN_ID:
+        await event.respond("⛔ Unauthorized.")
+        return
+    
+    parts = event.text.split()
+    if len(parts) < 2:
+        await event.respond("❌ Usage: `/done [user_id]`")
+        return
+    
+    uid = parts[1]
+    
+    if uid not in waiting_users:
+        await event.respond(f"❌ User {uid} is not in the waiting list.")
+        return
+    
+    waiting_users.remove(uid)
+    if str(uid) in pending_requests:
+        del pending_requests[str(uid)]
+    
+    await event.respond(f"✅ Marked user {uid} as done. Removed from waiting list.")
+    
+    await bot_client.send_message(
+        int(uid),
+        f"✅ **Task Completed!**\n\n"
+        f"📌 Your request has been marked as completed.\n"
+        f"📊 You can now request a new task if needed.\n"
+        f"💡 Send `/task` to request another account."
+    )
+
+@bot_client.on(events.NewMessage(pattern='/reject'))
+async def reject_request_cmd(event):
+    if event.sender_id != ADMIN_ID:
+        await event.respond("⛔ Unauthorized.")
+        return
+    
+    parts = event.text.split()
+    if len(parts) < 2:
+        await event.respond("❌ Usage: `/reject [user_id]`")
+        return
+    
+    uid = parts[1]
+    
+    if uid not in waiting_users:
+        await event.respond(f"❌ User {uid} is not in the waiting list.")
+        return
+    
+    waiting_users.remove(uid)
+    if str(uid) in pending_requests:
+        del pending_requests[str(uid)]
+    
+    await event.respond(f"❌ Rejected request for user {uid}.")
+    
+    await bot_client.send_message(
+        int(uid),
+        f"❌ **Request Declined**\n\n"
+        f"📌 Your task request has been declined.\n"
+        f"📌 Please try again later or contact support.\n"
+        f"💡 Send `/task` to request again."
+    )
 
 async def cancel_on_original_bot():
     try:
@@ -588,7 +730,7 @@ async def history_cmd(event):
 async def help_cmd(event):
     try:
         buttons = [
-            [Button.inline("➕ New Account", "new_task")],
+            [Button.inline("➕ Request Account", "new_task")],
             [Button.inline("📋 My accounts", "my_tasks")],
             [Button.inline("💰 Balance", "my_balance")],
             [Button.inline("👤 My referrals", "referrals")]
@@ -604,7 +746,7 @@ async def help_cmd(event):
             "⏳ **Hold Period:** 24 hours\n"
             "👤 **Referral Bonus:** $0.20 per referral\n\n"
             "📌 **Commands:**\n"
-            "➕ `/task` - New account\n"
+            "➕ `/task` - Request a new account\n"
             "📋 `/tasks` - View your accounts\n"
             "🔄 `/cancel` - Cancel pending task\n"
             "💰 `/balance` - Check earnings\n"
@@ -629,7 +771,11 @@ async def handle_callback(event):
         print(f"📩 Callback received: {data}")
         
         if data == "new_task":
-            await task_handler(event)
+            await task_cmd(event)
+        elif data == "request_new_task":
+            await user_client.send_message(REAL_BOT, "➕ New Task")
+            await event.respond("⏳ **Generating new account...**\nPlease wait 3-5 seconds.")
+            print(f"✅ Sent '➕ New Task' to original bot for user {event.sender_id}")
         elif data == "my_tasks":
             await tasks_cmd(event)
         elif data == "my_balance":
@@ -904,7 +1050,6 @@ def run_http_server():
     except Exception as e:
         print(f"HTTP server error: {e}")
 
-# Start HTTP server in background
 threading.Thread(target=run_http_server, daemon=True).start()
 # =============================================
 
@@ -915,6 +1060,7 @@ async def main():
     print("💳 Min Withdrawal: $5.00")
     print("🌐 HTTP server running on port 8000")
     print("🔄 Self-ping active every 3 minutes")
+    print("📌 Manual task request mode: ON")
     
     try:
         await user_client.start()
@@ -932,7 +1078,6 @@ async def main():
     
     print("🎯 Running. Listening to @GmailFProBot")
     print(f"👤 Admin ID: {ADMIN_ID}")
-    print("📡 Command to generate tasks: '➕ New Account'")
     print(f"📊 Max pending tasks: {MAX_PENDING_TASKS}")
     
     await asyncio.gather(
