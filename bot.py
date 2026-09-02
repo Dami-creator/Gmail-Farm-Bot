@@ -13,6 +13,7 @@ import traceback
 import threading
 import time
 import urllib.request
+import base64
 
 # ========== YOUR DETAILS ==========
 API_ID = 32349198
@@ -22,27 +23,116 @@ ADMIN_ID = 8461617516
 
 # ========== YOUR SESSION STRING ==========
 SESSION_STRING = "1BJWap1wBu68TwMoPTVLJcbf3vdc5wBVVz1hoTust_Xotm0LSp5_XFt6bNRNhNwfImpoG8OyKl6tkNsg41PeNtL5P0CwvrJ8GPvpv-PVayTpOYmpsu_P_eYY82fIx3bo1htKadUTAnVzLUVRmCG_dbHi2VQfoTk3xXWa1Ht3m1CjDiCfnt7uz55v3pNi7PKRZ-0X-YVttuViGN9hfr5RTOsIEqcwFuu6GFNiyAzG1jl11zKMh8TZxZNRdEQcC_TpoKVpg3AHVsO2Jx8p5l3T-vXlVPaarXwDhDpJ8jOSStpEgW2GBnRA6q9KEIzqvV9RzZsDH_HmhO3tdjcLroYnFATvz9t3Pkjc="
+
+# ========== GITHUB SYNC SETTINGS ==========
+GITHUB_TOKEN = "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"  # Replace with your GitHub token
+GITHUB_REPO = "YourUsername/gmail-farm-bot"  # Replace with your repo
+GITHUB_FILE = "users.json"
 # ==========================================
 
 REAL_BOT = "@GmailFProBot"
 MAX_PENDING_TASKS = 5
 REFERRAL_BONUS = 0.20
 
-users = {}
-if os.path.exists("users.json"):
-    with open("users.json", "r") as f:
-        users = json.load(f)
+# ========== GITHUB SYNC FUNCTIONS ==========
+def save_to_github(data):
+    """Save users data to GitHub"""
+    try:
+        import urllib.request
+        import json as json_lib
+        
+        # Prepare the data
+        content = json_lib.dumps(data, indent=2)
+        encoded_content = base64.b64encode(content.encode()).decode()
+        
+        # Get the current file SHA (if it exists)
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            response = urllib.request.urlopen(req)
+            response_data = json_lib.loads(response.read().decode())
+            sha = response_data.get("sha")
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                sha = None  # File doesn't exist yet
+            else:
+                print(f"❌ GitHub error: {e}")
+                return False
+        
+        # Prepare the commit
+        commit_data = {
+            "message": f"Auto-save users data {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "content": encoded_content,
+            "branch": "main"
+        }
+        if sha:
+            commit_data["sha"] = sha
+        
+        # Send the update
+        req = urllib.request.Request(
+            url,
+            data=json_lib.dumps(commit_data).encode(),
+            headers=headers,
+            method="PUT"
+        )
+        response = urllib.request.urlopen(req)
+        print("✅ Data saved to GitHub successfully!")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to save to GitHub: {e}")
+        return False
+
+def load_from_github():
+    """Load users data from GitHub"""
+    try:
+        import urllib.request
+        import json as json_lib
+        
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        response = urllib.request.urlopen(req)
+        response_data = json_lib.loads(response.read().decode())
+        
+        content = base64.b64decode(response_data.get("content", "")).decode()
+        data = json_lib.loads(content)
+        print(f"✅ Loaded {len(data)} users from GitHub")
+        return data
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            print("📭 No users file found on GitHub, starting fresh")
+            return {}
+        print(f"❌ GitHub load error: {e}")
+        return {}
+    except Exception as e:
+        print(f"❌ Failed to load from GitHub: {e}")
+        return {}
+# ==========================================
+
+# Load users from GitHub
+users = load_from_github()
 
 def save_users():
+    """Save users to local file and GitHub"""
     with open("users.json", "w") as f:
         json.dump(users, f)
+    save_to_github(users)
 
 user_client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 bot_client = TelegramClient("bot_session", API_ID, API_HASH)
 
 waiting_users = []
 processing_users = set()
-pending_requests = {}  # Track users waiting for admin to send credentials
+pending_requests = {}
 
 def generate_referral_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
@@ -69,10 +159,8 @@ async def catch_reply(event):
         text = event.raw_text
         print(f"[CAPTURED] {text}")
         
-        # Check if the original bot says "You still have unfinished tasks"
         if "unfinished tasks" in text.lower() or "complete them" in text.lower():
             print("✅ Detected pending tasks message from original bot")
-            
             email_match = re.search(r'[a-zA-Z0-9._%+-]+@gmail\.com', text)
             email_text = ""
             if email_match:
@@ -92,7 +180,6 @@ async def catch_reply(event):
             )
             return
         
-        # Check for credentials from original bot
         email_match = re.search(r'[a-zA-Z0-9._%+-]+@gmail\.com', text)
         password_match = re.search(r'(?:pass|pw|password)[\s:]+([^\s\n]+)', text, re.IGNORECASE)
         
@@ -100,11 +187,9 @@ async def catch_reply(event):
             email = email_match.group(0)
             password = password_match.group(1)
             
-            # Check if we have a waiting user for manual approval
             if waiting_users:
                 user_id = waiting_users.pop(0)
                 
-                # Store the credentials in the user's account
                 uid = str(user_id)
                 if uid not in users:
                     users[uid] = {
@@ -127,7 +212,6 @@ async def catch_reply(event):
                 })
                 save_users()
                 
-                # Send credentials to the user
                 buttons = [
                     [Button.inline("✅ Done", "confirm_account")],
                     [Button.inline("🔄 Cancel registration", "cancel_registration")],
@@ -152,7 +236,6 @@ async def catch_reply(event):
                 )
                 print(f"✅ Credentials sent to user {user_id}")
             else:
-                # No waiting users - store credentials for admin to send manually
                 print(f"⚠️ Credentials received but no waiting user: {email} / {password}")
                 
     except Exception as e:
@@ -218,7 +301,7 @@ async def start_cmd(event):
             referrer_info = f"\n👤 **Referred by:** {referred_by}"
         
         buttons = [
-            [Button.inline("➕ Request Account", "new_task")],
+            [Button.inline("➕ New Account", "new_task")],
             [Button.inline("📋 My accounts", "my_tasks")],
             [Button.inline("💰 Balance", "my_balance")],
             [Button.inline("👤 My referrals", "referrals")],
@@ -281,11 +364,11 @@ async def task_cmd(event):
                 )
                 return
             
-            # Add user to waiting list for admin to send credentials
+            queue_position = len(waiting_users) + 1
+            
             waiting_users.append(user_id)
             pending_requests[uid] = datetime.now().isoformat()
             
-            # Notify admin
             await bot_client.send_message(
                 ADMIN_ID,
                 f"🔍 **New Task Request**\n\n"
@@ -300,13 +383,13 @@ async def task_cmd(event):
             )
             
             await event.respond(
-                f"⏳ **Request Received**\n\n"
-                f"📌 An admin will send your credentials shortly.\n"
-                f"⏱️ **Estimated wait:** 1-3 minutes.\n"
-                f"📊 You will be notified when your account is ready.\n\n"
-                f"💡 Please be patient — credentials are sent manually to ensure quality."
+                f"⏳ **Generating your account...**\n\n"
+                f"📌 Your request is in the queue.\n"
+                f"📊 **Position:** #{queue_position}\n"
+                f"⏱️ **Estimated wait:** 1-3 minutes\n\n"
+                f"💡 You will be notified when your account is ready."
             )
-            print(f"✅ /task request from {user_id}")
+            print(f"✅ /task from {user_id}")
         finally:
             processing_users.discard(uid)
     except Exception as e:
@@ -466,6 +549,14 @@ async def cancel_cmd(event):
             for acc in pending:
                 acc["status"] = "cancelled"
             save_users()
+            
+            await bot_client.send_message(
+                ADMIN_ID,
+                f"🔍 **Registration Cancelled**\n\n"
+                f"👤 **User ID:** `{uid}`\n"
+                f"📌 {len(pending)} task(s) have been cancelled.\n"
+                f"📊 Available Slots: {MAX_PENDING_TASKS}"
+            )
             
             await event.respond(
                 f"❌ **Registration Cancelled**\n\n"
@@ -730,7 +821,7 @@ async def history_cmd(event):
 async def help_cmd(event):
     try:
         buttons = [
-            [Button.inline("➕ Request Account", "new_task")],
+            [Button.inline("➕ New Account", "new_task")],
             [Button.inline("📋 My accounts", "my_tasks")],
             [Button.inline("💰 Balance", "my_balance")],
             [Button.inline("👤 My referrals", "referrals")]
@@ -746,7 +837,7 @@ async def help_cmd(event):
             "⏳ **Hold Period:** 24 hours\n"
             "👤 **Referral Bonus:** $0.20 per referral\n\n"
             "📌 **Commands:**\n"
-            "➕ `/task` - Request a new account\n"
+            "➕ `/task` - New account\n"
             "📋 `/tasks` - View your accounts\n"
             "🔄 `/cancel` - Cancel pending task\n"
             "💰 `/balance` - Check earnings\n"
@@ -1024,12 +1115,24 @@ async def admin_stats_cmd(event):
             f"🚫 **Cancelled:** {total_cancelled}\n"
             f"💰 **Total Paid Out:** ${total_earned:.2f}\n"
             f"👤 **Total Referrals:** {total_referrals}\n\n"
-            f"📁 Data saved in `users.json`"
+            f"📁 Data saved in `users.json` and synced to GitHub"
         )
     except Exception as e:
         print(f"❌ Error in /admin_stats: {e}")
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
+
+@bot_client.on(events.NewMessage(pattern='/clear_pending'))
+async def clear_pending_cmd(event):
+    if event.sender_id != ADMIN_ID:
+        await event.respond("⛔ Unauthorized.")
+        return
+    
+    count = len(waiting_users)
+    waiting_users.clear()
+    pending_requests.clear()
+    
+    await event.respond(f"✅ Cleared {count} pending request(s) from the waiting list.")
 
 # ========== HTTP SERVER FOR RENDER ==========
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -1060,7 +1163,8 @@ async def main():
     print("💳 Min Withdrawal: $5.00")
     print("🌐 HTTP server running on port 8000")
     print("🔄 Self-ping active every 3 minutes")
-    print("📌 Manual task request mode: ON")
+    print(f"📁 Users loaded: {len(users)}")
+    print("💾 Auto-save to GitHub: ENABLED")
     
     try:
         await user_client.start()
