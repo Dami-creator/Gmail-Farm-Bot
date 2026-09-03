@@ -25,8 +25,8 @@ ADMIN_ID = 8461617516
 SESSION_STRING = "1BJWap1wBu68TwMoPTVLJcbf3vdc5wBVVz1hoTust_Xotm0LSp5_XFt6bNRNhNwfImpoG8OyKl6tkNsg41PeNtL5P0CwvrJ8GPvpv-PVayTpOYmpsu_P_eYY82fIx3bo1htKadUTAnVzLUVRmCG_dbHi2VQfoTk3xXWa1Ht3m1CjDiCfnt7uz55v3pNi7PKRZ-0X-YVttuViGN9hfr5RTOsIEqcwFuu6GFNiyAzG1jl11zKMh8TZxZNRdEQcC_TpoKVpg3AHVsO2Jx8p5l3T-vXlVPaarXwDhDpJ8jOSStpEgW2GBnRA6q9KEIzqvV9RzZsDH_HmhO3tdjcLroYnFATvz9t3Pkjc="
 
 # ========== GITHUB SYNC SETTINGS ==========
-GITHUB_TOKEN = "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"  # Replace with your GitHub token
-GITHUB_REPO = "YourUsername/gmail-farm-bot"  # Replace with your repo
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPO = "Dami-creator/gmail-farm-bot"
 GITHUB_FILE = "users.json"
 # ==========================================
 
@@ -37,15 +37,16 @@ REFERRAL_BONUS = 0.20
 # ========== GITHUB SYNC FUNCTIONS ==========
 def save_to_github(data):
     """Save users data to GitHub"""
+    if not GITHUB_TOKEN:
+        print("⚠️ No GitHub token set, skipping save")
+        return False
     try:
         import urllib.request
         import json as json_lib
         
-        # Prepare the data
         content = json_lib.dumps(data, indent=2)
         encoded_content = base64.b64encode(content.encode()).decode()
         
-        # Get the current file SHA (if it exists)
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
         headers = {
             "Authorization": f"token {GITHUB_TOKEN}",
@@ -59,12 +60,11 @@ def save_to_github(data):
             sha = response_data.get("sha")
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                sha = None  # File doesn't exist yet
+                sha = None
             else:
                 print(f"❌ GitHub error: {e}")
                 return False
         
-        # Prepare the commit
         commit_data = {
             "message": f"Auto-save users data {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             "content": encoded_content,
@@ -73,7 +73,6 @@ def save_to_github(data):
         if sha:
             commit_data["sha"] = sha
         
-        # Send the update
         req = urllib.request.Request(
             url,
             data=json_lib.dumps(commit_data).encode(),
@@ -89,6 +88,9 @@ def save_to_github(data):
 
 def load_from_github():
     """Load users data from GitHub"""
+    if not GITHUB_TOKEN:
+        print("⚠️ No GitHub token set, starting fresh")
+        return {}
     try:
         import urllib.request
         import json as json_lib
@@ -330,7 +332,7 @@ async def start_cmd(event):
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
 
-@bot_client.on(events.NewMessage(pattern='/task'))
+@bot_client.on(events.NewMessage(pattern='/task$'))
 async def task_cmd(event):
     try:
         user_id = event.sender_id
@@ -378,7 +380,7 @@ async def task_cmd(event):
                 f"💡 Go to @GmailFProBot and click **'➕ New Task'**\n"
                 f"📌 Then copy and paste the credentials to the user.\n\n"
                 f"✅ To mark as done: `/done {uid}`\n"
-                f"❌ To reject: `/reject {uid}`\n"
+                f"❌ To reject: `/reject {uid}` (optional reason)\n"
                 f"📋 To see all pending: `/pending`"
             )
             
@@ -426,7 +428,8 @@ async def pending_cmd(event):
         msg += f"📌 ... and {len(waiting_users) - 10} more.\n"
     
     msg += f"\n💡 To mark as done: `/done [user_id]`\n"
-    msg += f"❌ To reject: `/reject [user_id]`"
+    msg += f"❌ To reject: `/reject [user_id]` (optional reason)\n"
+    msg += f"📋 To see all pending: `/pending`"
     
     await event.respond(msg)
 
@@ -469,10 +472,13 @@ async def reject_request_cmd(event):
     
     parts = event.text.split()
     if len(parts) < 2:
-        await event.respond("❌ Usage: `/reject [user_id]`")
+        await event.respond("❌ Usage: `/reject [user_id] (optional reason)`")
         return
     
     uid = parts[1]
+    reason = None
+    if len(parts) > 2:
+        reason = " ".join(parts[2:])
     
     if uid not in waiting_users:
         await event.respond(f"❌ User {uid} is not in the waiting list.")
@@ -482,14 +488,25 @@ async def reject_request_cmd(event):
     if str(uid) in pending_requests:
         del pending_requests[str(uid)]
     
-    await event.respond(f"❌ Rejected request for user {uid}.")
+    if reason:
+        await event.respond(f"❌ Rejected request for user {uid}. Reason: {reason}")
+    else:
+        await event.respond(f"❌ Rejected request for user {uid}.")
+    
+    rejection_msg = f"❌ **Account Rejected**\n\n"
+    rejection_msg += f"📌 Your task request has been declined.\n"
+    
+    if reason:
+        rejection_msg += f"⚠️ **Reason:** {reason}\n\n"
+    else:
+        rejection_msg += f"⚠️ Verification failed.\n\n"
+    
+    rejection_msg += f"📌 Please check your details and try again.\n"
+    rejection_msg += f"💡 Send `/task` to request a new account."
     
     await bot_client.send_message(
         int(uid),
-        f"❌ **Request Declined**\n\n"
-        f"📌 Your task request has been declined.\n"
-        f"📌 Please try again later or contact support.\n"
-        f"💡 Send `/task` to request again."
+        rejection_msg
     )
 
 async def cancel_on_original_bot():
@@ -961,7 +978,7 @@ async def confirm_cmd(event):
                 f"💰 **Amount:** $0.50\n"
                 f"📅 **Submitted:** {datetime.now().strftime('%H:%M:%S')}\n\n"
                 f"✅ `/verify {uid}` - Approve\n"
-                f"❌ `/reject {uid}` - Reject"
+                f"❌ `/reject_account {uid}` (optional reason)"
             )
             
             await event.respond(
@@ -1044,8 +1061,8 @@ async def verify_cmd(event):
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
 
-@bot_client.on(events.NewMessage(pattern='/reject'))
-async def reject_cmd(event):
+@bot_client.on(events.NewMessage(pattern='/reject_account'))
+async def reject_account_cmd(event):
     if event.sender_id != ADMIN_ID:
         await event.respond("⛔ Unauthorized.")
         return
@@ -1053,10 +1070,13 @@ async def reject_cmd(event):
     try:
         parts = event.text.split()
         if len(parts) < 2:
-            await event.respond("❌ Usage: `/reject [user_id]`")
+            await event.respond("❌ Usage: `/reject_account [user_id] (optional reason)`")
             return
         
         uid = parts[1]
+        reason = None
+        if len(parts) > 2:
+            reason = " ".join(parts[2:])
         
         if uid not in users:
             await event.respond(f"❌ User {uid} not found.")
@@ -1069,21 +1089,31 @@ async def reject_cmd(event):
                 users[uid]["total"] -= 1
                 save_users()
                 
+                rejection_msg = f"❌ **Account Rejected**\n\n"
+                rejection_msg += f"📧 **Email:** `{acc['email']}`\n"
+                
+                if reason:
+                    rejection_msg += f"⚠️ **Reason:** {reason}\n\n"
+                else:
+                    rejection_msg += f"⚠️ Verification failed.\n\n"
+                
+                rejection_msg += f"❗ No balance added.\n\n"
+                rejection_msg += f"📌 Send `/task` to try again."
+                
                 await bot_client.send_message(
                     int(uid),
-                    f"❌ **Account Rejected**\n\n"
-                    f"📧 **Email:** `{acc['email']}`\n"
-                    f"⚠️ **Reason:** Verification failed.\n"
-                    f"❗ No balance added.\n\n"
-                    f"📌 Send `/task` to try again."
+                    rejection_msg
                 )
                 
-                await event.respond(f"❌ Rejected account for user {uid}")
+                if reason:
+                    await event.respond(f"❌ Rejected account for user {uid}. Reason: {reason}")
+                else:
+                    await event.respond(f"❌ Rejected account for user {uid}.")
                 return
         
         await event.respond(f"❌ No verifying accounts for user {uid}.")
     except Exception as e:
-        print(f"❌ Error in /reject: {e}")
+        print(f"❌ Error in /reject_account: {e}")
         traceback.print_exc()
         await event.respond(f"⚠️ Error: {str(e)}")
 
